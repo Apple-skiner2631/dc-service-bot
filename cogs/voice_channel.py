@@ -44,7 +44,6 @@ E_UNGHOST  = discord.PartialEmoji(name="e_unghost",  id=1531237228905496826)
 E_TRANSFER = discord.PartialEmoji(name="e_transfer", id=1531237291639439492)
 
 
-
 def is_authorized(member: discord.Member, channel_id: int) -> bool:
     owner_id = voice_owners.get(channel_id)
     if member.id == owner_id:
@@ -177,6 +176,8 @@ class ChannelSettingsSelect(Select):
         channel = interaction.channel
         owner_id = voice_owners.get(channel.id)
 
+        await interaction.message.edit(view=ControlPanelView())
+
         if self.values[0] == "claim":
             if owner_id in [m.id for m in channel.members]:
                 return await interaction.response.send_message("❌ 原房主仍在此頻道中，無法轉移所有權！", ephemeral=True)
@@ -267,6 +268,8 @@ class ChannelPermissionsSelect(Select):
     async def callback(self, interaction: discord.Interaction):
         channel = interaction.channel
         owner_id = voice_owners.get(channel.id)
+
+        await interaction.message.edit(view=ControlPanelView())
 
         if not is_authorized(interaction.user, channel.id):
             return await interaction.response.send_message("❌ 只有房主或管理人員才能設定權限！", ephemeral=True)
@@ -363,7 +366,5 @@ if __name__ == "__main__":
     token = os.getenv("DISCORD_TOKEN")
     if token:
         bot.run(token)
-async def setup(bot: commands.Bot):
-    await bot.add_cog(VoiceChannel(bot))
     else:
         print("錯誤：找不到 DISCORD_TOKEN 環境變數。")
