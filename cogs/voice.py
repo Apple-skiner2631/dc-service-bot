@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Button, Modal, TextInput, Select, UserSelect
 
+
 TRIGGER_CHANNEL_ID = 1530974075902759083
 CATEGORY_ID = 1459692616076624087
 STAFF_ROLE_ID = 1459696673239470338
@@ -13,14 +14,8 @@ WHITELIST_CHANNEL_IDS = {
     1531994737819779112
 }
 
-intents = discord.Intents.default()
-intents.voice_states = True
-intents.guilds = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 voice_owners = {}
+
 
 E_MENU_SETTINGS = discord.PartialEmoji(name="menu_settings", id=1531236010413920276)
 E_NAME     = discord.PartialEmoji(name="e_name",     id=1531235954893783070)
@@ -42,7 +37,6 @@ E_INVITE   = discord.PartialEmoji(name="e_invite",   id=1531237152736678089)
 E_GHOST    = discord.PartialEmoji(name="e_ghost",    id=1531237201780805723)
 E_UNGHOST  = discord.PartialEmoji(name="e_unghost",  id=1531237228905496826)
 E_TRANSFER = discord.PartialEmoji(name="e_transfer", id=1531237291639439492)
-
 
 
 def is_authorized(member: discord.Member, channel_id: int) -> bool:
@@ -304,59 +298,59 @@ class ControlPanelView(View):
         self.add_item(ChannelPermissionsSelect())
 
 
-@bot.event
-async def on_ready():
-    print(f"機器人已成功登入為 {bot.user}")
+class VoiceMaster(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
 
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        if after.channel and after.channel.id == TRIGGER_CHANNEL_ID:
+            guild = member.guild
+            category = guild.get_channel(CATEGORY_ID)
 
-@bot.event
-async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-    if after.channel and after.channel.id == TRIGGER_CHANNEL_ID:
-        guild = member.guild
-        category = guild.get_channel(CATEGORY_ID)
+            if not category or not isinstance(category, discord.CategoryChannel):
+                return
 
-        if not category or not isinstance(category, discord.CategoryChannel):
-            return
+            new_channel = await guild.create_voice_channel(
+                name=f"{member.display_name} 的語音頻道",
+                category=category,
+                position=len(category.channels)
+            )
 
-        new_channel = await guild.create_voice_channel(
-            name=f"{member.display_name} 的語音頻道",
-            category=category,
-            position=len(category.channels)
-        )
+            voice_owners[new_channel.id] = member.id
 
-        voice_owners[new_channel.id] = member.id
+            await member.move_to(new_channel)
 
-        await member.move_to(new_channel)
+            embed = discord.Embed(
+                title="🔊 歡迎來到你的專屬語音頻道",
+                description=(
+                    f"你好 {member.mention}！\n 使用下方選單調整頻道設定：\n"
+                    "──────────────────────────\n"
+                    "**頻道設定[Channel Settings]**\n\n"
+                    "──────────────────────────\n"
+                    "**頻道權限[Channel Permissions]**"
+                ),
+                color=discord.Color.from_rgb(47, 49, 54)
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.set_footer(text="提示：所有人離開頻道後，系統將自動清理此空間。")
 
-        embed = discord.Embed(
-            title="🔊 歡迎來到你的專屬語音頻道",
-            description=(
-                f"你好 {member.mention}！\n 使用下方選單調整頻道設定：\n"
-                "──────────────────────────\n"
-                "**頻道設定[Channel Settings]**\n\n"
-                "──────────────────────────\n"
-                "**頻道權限[Channel Permissions]**"
-            ),
-            color=discord.Color.from_rgb(47, 49, 54)
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text="提示：所有人離開頻道後，系統將自動清理此空間。")
+            view = ControlPanelView()
+            await new_channel.send(embed=embed, view=view)
 
-        view = ControlPanelView()
-        await new_channel.send(embed=embed, view=view)
+        if before.channel and before.channel.category_id == CATEGORY_ID:
+            if before.channel.id in WHITELIST_CHANNEL_IDS:
+                return
 
-    if before.channel and before.channel.category_id == CATEGORY_ID:
-        if before.channel.id in WHITELIST_CHANNEL_IDS:
-            return
+            if len(before.channel.members) == 0:
+                channel_id = before.channel.id
+                try:
+                    await before.channel.delete()
+                    if channel_id in voice_owners:
+                        del voice_owners[channel_id]
+                except discord.NotFound:
+                    pass
 
-        if len(before.channel.members) == 0:
-            channel_id = before.channel.id
-            try:
-                await before.channel.delete()
-                if channel_id in voice_owners:
-                    del voice_owners[channel_id]
-            except discord.NotFound:
-                pass
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(VoiceCog(bot))
+    await bot.add_cog(VoiceMaster(bot))
