@@ -8,6 +8,7 @@ intents = discord.Intents.default()
 intents.voice_states = True
 intents.guilds = True
 intents.members = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -23,21 +24,23 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"Web server running on port {port}")
+    print(f"✅ Web server 成功運行於 Port {port}")
 
 @bot.event
 async def on_ready():
-    print(f"機器人已上線：{bot.user}")
+    print(f"✅ 機器人成功線上登入：{bot.user}")
 
 async def main():
     async with bot:
+
         await start_web_server()
-        
+
         token = os.getenv("DISCORD_TOKEN")
         if token:
-            await bot.start(token)
+            print("🔑 正在嘗試連線至 Discord...")
+            await bot.start(token.strip())
         else:
-            print("錯誤：找不到 DISCORD_TOKEN")
+            print("❌ 錯誤：找不到 DISCORD_TOKEN 環境變數！")
 
 if __name__ == "__main__":
     asyncio.run(main())
