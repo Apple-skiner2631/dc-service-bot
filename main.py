@@ -21,14 +21,14 @@ async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"✅ Web server 成功運行於 Port {port}")
+    print(f"✅ Web Server 已啟動，監聽 Port: {port}")
 
 @bot.event
 async def on_ready():
-    print(f"✅ 機器人成功線上登入：{bot.user}")
+    print(f"🎉 成功登入 Discord！機器人名稱：{bot.user}")
 
 async def main():
     async with bot:
@@ -36,11 +36,21 @@ async def main():
         await start_web_server()
 
         token = os.getenv("DISCORD_TOKEN")
-        if token:
-            print("🔑 正在嘗試連線至 Discord...")
-            await bot.start(token.strip())
-        else:
-            print("❌ 錯誤：找不到 DISCORD_TOKEN 環境變數！")
+        if not token:
+            print("❌ [錯誤] 抓不到 DISCORD_TOKEN！請檢查 Render 的 Environment 變數名稱！")
+            return
+        
+        token = token.strip()
+        print(f"🔑 已找到 Token (前5碼: {token[:5]}...)，正在嘗試連線至 Discord...")
+        
+        try:
+            await bot.start(token)
+        except discord.errors.LoginFailure:
+            print("❌ [錯誤] Discord Token 無效或已過期！請重新生成 Token。")
+        except discord.errors.PrivilegedIntentsRequired:
+            print("❌ [錯誤] 請至 Discord Developer Portal 開啟 Privileged Gateway Intents (Server Members Intent)！")
+        except Exception as e:
+            print(f"❌ [未知錯誤] 連線失敗：{e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
