@@ -368,3 +368,6 @@ if __name__ == "__main__":
         bot.run(token)
     else:
         print("錯誤：找不到 DISCORD_TOKEN 環境變數。")
+        
+async def setup(bot: commands.Bot):
+    await bot.add_cog(VoiceCog(bot))
