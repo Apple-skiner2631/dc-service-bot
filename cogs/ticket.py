@@ -1,20 +1,18 @@
 import os
+import io
+import asyncio
+import logging
+from datetime import datetime
 import discord
 from discord.ext import commands
 from discord import ui
-from datetime import datetime
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+
 TICKET_CHANNEL_ID = 1466986768652963983
 PENDING_CAT_ID = 1490338802261299312
 RESOLVED_CAT_ID = 1490339576689201212
-
 STAFF_ROLE_IDS = [1459696673239470338, 1459700251295223994]
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-bot = commands.Bot(command_prefix="$", intents=intents)
 
 class BaseTicketModal(ui.Modal):
     def __init__(self, title_text: str, ticket_type: str, field1_label: str, field2_label: str, field3_label: str):
@@ -45,17 +43,26 @@ class BaseTicketModal(ui.Modal):
             if staff_role:
                 overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
         
-        channel_name = f"{self.ticket_type}-{interaction.user.name}"
+        user_clean_name = interaction.user.name.lower()
+        channel_name = f"{self.ticket_type}-{user_clean_name}"
         ticket_channel = await guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites)
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         embed = discord.Embed(title=" ✅ 工單已建立\n 請耐心等待管理人員受理!", color=discord.Color.blue())
-        embed.description = f"**時間:** {current_time}\n**使用者:** {interaction.user.mention}\n**工單類型:** {self.ticket_type}\n**{self.field1.label}:** {self.field1.value}\n**{self.field2.label}:** {self.field2.value}\n**{self.field3.label}:** {self.field3.value if self.field3.value else '無'}"
+        embed.description = (
+            f"**時間:** {current_time}\n"
+            f"**使用者:** {interaction.user.mention}\n"
+            f"**工單類型:** {self.ticket_type}\n"
+            f"**{self.field1.label}:** {self.field1.value}\n"
+            f"**{self.field2.label}:** {self.field2.value}\n"
+            f"**{self.field3.label}:** {self.field3.value if self.field3.value else '無'}"
+        )
         
         view = TicketControlView()
         await ticket_channel.send(embed=embed, view=view)
         await interaction.followup.send(f"**工單已成功建立：{ticket_channel.mention}**", ephemeral=True)
+
 
 class TicketSelect(ui.Select):
     def __init__(self):
@@ -108,10 +115,12 @@ class TicketSelect(ui.Select):
 
         await interaction.response.send_modal(modal)
 
+
 class TicketLaunchView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketSelect())
+
 
 class TicketControlView(ui.View):
     def __init__(self):
@@ -126,6 +135,7 @@ class TicketControlView(ui.View):
         view = TicketPostCloseView()
         await interaction.response.send_message(embed=embed, view=view)
 
+
 class TicketPostCloseView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -139,6 +149,7 @@ class TicketPostCloseView(ui.View):
     @ui.button(label="⛔ 刪除頻道", style=discord.ButtonStyle.danger, custom_id="opt_delete")
     async def opt_delete(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message("**⚠ 頻道即將在 5 秒後刪除...**")
+        await asyncio.sleep(5)
         await interaction.channel.delete()
 
     @ui.button(label="📥 匯出對話檔案", style=discord.ButtonStyle.success, custom_id="opt_export")
@@ -148,24 +159,29 @@ class TicketPostCloseView(ui.View):
         async for message in interaction.channel.history(limit=None, oldest_first=True):
             log_text += f"[{message.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {message.author}: {message.content}\n"
         
-        file_path = f"transcript-{interaction.channel.name}.txt"
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(log_text)
+        file_buffer = io.BytesIO(log_text.encode("utf-8"))
+        file_name = f"transcript-{interaction.channel.name}.txt"
         
-        await interaction.followup.send(file=discord.File(file_path))
-        os.remove(file_path)
+        await interaction.followup.send(file=discord.File(fp=file_buffer, filename=file_name))
 
-@bot.event
-async def on_ready():
-    bot.add_view(TicketLaunchView())
-    bot.add_view(TicketControlView())
-    bot.add_view(TicketPostCloseView())
-    channel = bot.get_channel(TICKET_CHANNEL_ID)
-    if channel:
-        await channel.purge(limit=10)
-        embed = discord.Embed(
-            title="📨 票務系統 | Ticket System", 
-            description="""歡迎使用支援服務，請點擊下方選單選擇您要開啟的服務類別。
+
+class TicketCog(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # 註冊持久化 Views 確保重啟後按鈕不失聯
+        self.bot.add_view(TicketLaunchView())
+        self.bot.add_view(TicketControlView())
+        self.bot.add_view(TicketPostCloseView())
+
+        channel = self.bot.get_channel(TICKET_CHANNEL_ID)
+        if channel:
+            await channel.purge(limit=10)
+            embed = discord.Embed(
+                title="📨 票務系統 | Ticket System",
+                description="""歡迎使用支援服務，請點擊下方選單選擇您要開啟的服務類別。
 
 **⚠️ 開票須知：**
 1. 開啟工單前，請務必先詳閱伺服器規範。
@@ -173,49 +189,54 @@ async def on_ready():
 3. 每位玩家在每個類別最多只能開啟 1 張工單 (最多 3 張)。
 4. 請勿無故濫用票務系統，非必要請勿隨意開票。
 
-*管理團隊將會盡快為您處理，感謝您的配合！*""", 
-            color=discord.Color.green()
-        )
-        await channel.send(embed=embed, view=TicketLaunchView())
+*管理團隊將會盡快為您處理，感謝您的配合！*""",
+                color=discord.Color.green()
+            )
+            await channel.send(embed=embed, view=TicketLaunchView())
 
-@bot.command(name="new")
-async def cmd_new(ctx):
-    guild = ctx.guild
-    category = guild.get_channel(PENDING_CAT_ID)
-    
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    }
-    
-    for role_id in STAFF_ROLE_IDS:
-        staff_role = guild.get_role(role_id)
-        if staff_role:
-            overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    @commands.command(name="new")
+    async def cmd_new(self, ctx: commands.Context):
+        guild = ctx.guild
+        category = guild.get_channel(PENDING_CAT_ID)
         
-    ticket_channel = await guild.create_text_channel(name=f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
-    
-    embed = discord.Embed(title="**工單已建立!**", description=f"📄 歡迎使用工單系統。\n管理團隊將迅速為您服務! \n> **👥使用者:** {ctx.author.mention}", color=discord.Color.blue())
-    await ticket_channel.send(embed=embed, view=TicketControlView())
-    await ctx.send(f"**已為您開啟工單頻道：{ticket_channel.mention}**")
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        for role_id in STAFF_ROLE_IDS:
+            staff_role = guild.get_role(role_id)
+            if staff_role:
+                overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            
+        user_clean_name = ctx.author.name.lower()
+        ticket_channel = await guild.create_text_channel(name=f"ticket-{user_clean_name}", category=category, overwrites=overwrites)
+        
+        embed = discord.Embed(
+            title="**工單已建立!**",
+            description=f"📄 歡迎使用工單系統。\n管理團隊將迅速為您服務! \n> **👥使用者:** {ctx.author.mention}",
+            color=discord.Color.blue()
+        )
+        await ticket_channel.send(embed=embed, view=TicketControlView())
+        await ctx.send(f"**已為您開啟工單頻道：{ticket_channel.mention}**")
 
-@bot.command(name="user")
-async def cmd_user(ctx, member: discord.Member):
-    if any(prefix in ctx.channel.name for prefix in ["ticket-", "report-", "ask-", "suggest-"]):
-        await ctx.channel.set_permissions(member, read_messages=True, send_messages=True)
-        await ctx.send(f"**✅ 已成功將 {member.mention} 邀請至本工單頻道。**")
-    else:
-        await ctx.send("**⚠ 此指令只能在工單頻道內使用!**", delete_after=5)
+    @commands.command(name="user")
+    async def cmd_user(self, ctx: commands.Context, member: discord.Member):
+        if any(prefix in ctx.channel.name for prefix in ["ticket-", "report-", "ask-", "suggest-"]):
+            await ctx.channel.set_permissions(member, read_messages=True, send_messages=True)
+            await ctx.send(f"**✅ 已成功將 {member.mention} 邀請至本工單頻道。**")
+        else:
+            await ctx.send("**⚠ 此指令只能在工單頻道內使用!**", delete_after=5)
 
-@bot.command(name="close")
-async def cmd_close(ctx):
-    if any(prefix in ctx.channel.name for prefix in ["ticket-", "report-", "ask-", "suggest-"]):
-        embed = discord.Embed(title="**📨 工單管理選項**", description="**請選擇後續處理方式：**", color=discord.Color.orange())
-        await ctx.send(embed=embed, view=TicketPostCloseView())
-    else:
-        await ctx.send("⚠ 此指令只能在工單頻道內使用。", delete_after=5)
+    @commands.command(name="close")
+    async def cmd_close(self, ctx: commands.Context):
+        if any(prefix in ctx.channel.name for prefix in ["ticket-", "report-", "ask-", "suggest-"]):
+            embed = discord.Embed(title="**📨 工單管理選項**", description="**請選擇後續處理方式：**", color=discord.Color.orange())
+            await ctx.send(embed=embed, view=TicketPostCloseView())
+        else:
+            await ctx.send("⚠ 此指令只能在工單頻道內使用。", delete_after=5)
 
-import logging
-logging.basicConfig(level=logging.INFO)
-bot.run(TOKEN)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(TicketCog(bot))
