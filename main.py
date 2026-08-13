@@ -1,10 +1,12 @@
 import os
 import asyncio
 import logging
+from aiohttp import web
 import discord
 from discord.ext import commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,7 +23,6 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="$", intents=intents)
 
     async def setup_hook(self):
-
         initial_extensions = [
             "cogs.ticket",
             "cogs.voice"
@@ -36,10 +37,31 @@ class MyBot(commands.Bot):
     async def on_ready(self):
         logging.info(f"機器人已上線：{self.user} (ID: {self.user.id})")
 
+
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    logging.info(f"Web server 已在 Port {PORT} 啟動")
+
 bot = MyBot()
+
+async def main():
+    async with bot:
+
+        await asyncio.gather(
+            start_web_server(),
+            bot.start(TOKEN)
+        )
 
 if __name__ == "__main__":
     if not TOKEN:
-        logging.error("未找到 DISCORD_TOKEN 環境變數，請確認設定！")
+        logging.error("未找到 DISCORD_TOKEN 環境變數！")
     else:
-        bot.run(TOKEN)
+        asyncio.run(main())
