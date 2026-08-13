@@ -1,59 +1,45 @@
 import os
-import sys
 import asyncio
+import logging
 import discord
 from discord.ext import commands
-from aiohttp import web
 
-sys.stdout.reconfigure(line_buffering=True)
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 
 intents = discord.Intents.default()
-intents.voice_states = True
-intents.guilds = True
-intents.members = True
 intents.message_content = True
+intents.members = True
+intents.voice_states = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-async def handle_ping(request):
-    return web.Response(text="Bot is running smoothly on Docker!")
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="$", intents=intents)
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    print(f"✅ Web Server 成功於 Port {port} 中")
+    async def setup_hook(self):
 
-async def load_extensions():
-    if os.path.exists("./cogs"):
-        for filename in os.listdir("./cogs"):
-            if filename.endswith(".py"):
-                await bot.load_extension(f"cogs.{filename[:-3]}")
-                print(f"📦 已成功載入模組: {filename}")
+        initial_extensions = [
+            "cogs.ticket",
+            "cogs.voice"
+        ]
+        for ext in initial_extensions:
+            try:
+                await self.load_extension(ext)
+                logging.info(f"成功載入模組：{ext}")
+            except Exception as e:
+                logging.error(f"載入模組 {ext} 失敗：{e}")
 
-@bot.event
-async def on_ready():
-    print(f"機器人已成功登入：{bot.user}")
+    async def on_ready(self):
+        logging.info(f"機器人已上線：{self.user} (ID: {self.user.id})")
 
-async def main():
-    async with bot:
-        await start_web_server()
-        await load_extensions()
-        
-        token = os.getenv("DISCORD_TOKEN")
-        if not token:
-            print("❌ [錯誤] 找不到 DISCORD_TOKEN 環境變數！")
-            return
-            
-        print("🔑 正在嘗試連線至 Discord...")
-        try:
-            await bot.start(token.strip())
-        except Exception as e:
-            print(f"❌ [連線失敗] 原因：{e}")
+bot = MyBot()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if not TOKEN:
+        logging.error("未找到 DISCORD_TOKEN 環境變數，請確認設定！")
+    else:
+        bot.run(TOKEN)
