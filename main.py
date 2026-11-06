@@ -1,67 +1,58 @@
 import os
 import asyncio
 import logging
-from aiohttp import web
+from threading import Thread
+from flask import Flask, render_template
 import discord
 from discord.ext import commands
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-PORT = int(os.getenv("PORT", 8080))
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+app = Flask(__name__)
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.voice_states = True
+@app.route('/')
+def home():
+    return render_template('index.html')
 
-class MyBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="$", intents=intents)
+def run():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
-    async def setup_hook(self):
-        initial_extensions = [
-            "cogs.ticket",
-            "cogs.voice"
-        ]
-        for ext in initial_extensions:
-            try:
-                await self.load_extension(ext)
-                logging.info(f"成功載入模組：{ext}")
-            except Exception as e:
-                logging.error(f"載入模組 {ext} 失敗：{e}")
+def keep_alive():
+    t = Thread(target=run, daemon=True)
+    t.start()
 
-    async def on_ready(self):
-        logging.info(f"機器人已上線：{self.user} (ID: {self.user.id})")
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
+ALLOWED_IDS = [1008278721007992863, 1359813653544566815]
+bot.allowed_ids = ALLOWED_IDS
 
-async def handle_ping(request):
-    return web.Response(text="Bot is running!")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logging.info(f"Web server 已在 Port {PORT} 啟動")
-
-bot = MyBot()
+@bot.event
+async def on_ready():
+    print(f'系統連線成功 | 帳號: {bot.user}')
 
 async def main():
     async with bot:
-
-        await asyncio.gather(
-            start_web_server(),
-            bot.start(TOKEN)
-        )
+        extensions = [
+            "cogs.admin",
+            "cogs.music",
+            "cogs.utility",
+            "cogs.trap"
+        ]
+        for ext in extensions:
+            try:
+                await bot.load_extension(ext)
+                print(f"成功載入模組: {ext}")
+            except Exception as e:
+                print(f"載入模組 {ext} 失敗: {e}")
+        
+        token = os.environ.get("TOKEN")
+        if not token:
+            print("找不到 TOKEN 環境變數！")
+            return
+        
+        keep_alive()
+        await bot.start(token)
 
 if __name__ == "__main__":
-    if not TOKEN:
-        logging.error("未找到 DISCORD_TOKEN 環境變數！")
-    else:
-        asyncio.run(main())
+    asyncio.run(main())
