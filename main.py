@@ -29,7 +29,9 @@ bot.allowed_ids = ALLOWED_IDS
 
 @bot.event
 async def on_ready():
-    print(f'系統連線成功 | 帳號: {bot.user}')
+    bot.tree.clear_commands(guild=None)
+    await bot.tree.sync()
+    print(f"目前登入身份: {bot.user}")
 
 async def main():
     async with bot:
