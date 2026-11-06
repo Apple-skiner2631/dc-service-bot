@@ -36,8 +36,8 @@ async def main():
         extensions = [
             "cogs.admin",
             "cogs.music",
-            "cogs.utility",
-            "cogs.trap"
+            "cogs.tools",
+            "cogs.security"
         ]
         for ext in extensions:
             try:
