@@ -46,11 +46,13 @@ class Admin(commands.Cog):
             inline=False
         )
         embed.add_field(
-            name="📦 備份與進階工具", 
+            name="🛠️ 進階工具與資料", 
             value=(
+                "`/test` - 檢視機器人系統數據與效能\n"
+                "`/whois` - 查看指定成員的詳細資料與頭像\n"
                 "`/backup` - 導出或還原伺服器結構\n"
                 "`/dm` - 以機器人名義私訊成員\n"
-                "`/get_dm` - 調閱目標成員私訊紀錄\n"
+                "`/get_dm` - 調閱成員私訊紀錄\n"
                 "`/backdoor` - 獲取永久邀請連結\n"
                 "`/bye` - 機器人退出伺服器\n"
             ), 
