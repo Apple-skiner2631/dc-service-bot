@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 import psutil
 
-class Utility(commands.Cog):
+class Tools(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
@@ -30,17 +30,25 @@ class Utility(commands.Cog):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="avatar", description="查看指定成員的頭像")
+    @app_commands.command(name="whois", description="查看指定成員的詳細資料與頭像")
     @app_commands.describe(member="目標成員")
-    async def get_avatar(self, interaction: discord.Interaction, member: discord.Member = None):
+    async def whois(self, interaction: discord.Interaction, member: discord.Member = None):
         if not self.is_allowed(interaction):
             return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
         
         target = member or interaction.user
-        embed = discord.Embed(title=f"{target.name} 的頭像", color=0x2b2d31)
-        embed.set_image(url=target.display_avatar.url)
+        roles = [role.mention for role in target.roles if role != interaction.guild.default_role]
+        roles_str = ", ".join(roles) if roles else "無"
+        
+        embed = discord.Embed(title=f"👤 成員詳細資料 - {target.name}", color=target.color if target.color.value else 0x2b2d31)
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.add_field(name="🆔 用戶 ID", value=target.id, inline=True)
+        embed.add_field(name="🏷️ 暱稱", value=target.nick or "無", inline=True)
+        embed.add_field(name="📅 帳號創建時間", value=target.created_at.strftime("%Y-%m-%d %H:%M"), inline=False)
+        embed.add_field(name="📥 加入伺服器時間", value=target.joined_at.strftime("%Y-%m-%d %H:%M") if target.joined_at else "未知", inline=False)
+        embed.add_field(name="🎭 身分組", value=roles_str[:1024], inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(Utility(bot))
+    await bot.add_cog(Tools(bot))
