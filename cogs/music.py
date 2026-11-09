@@ -210,7 +210,7 @@ class Music(commands.Cog):
                 except:
                     pass
 
-try:
+            try:
                 if is_bilibili and b_audio_url:
                     title, uploader, duration, play_source_url = b_title, b_uploader, b_duration, b_audio_url
                 else:
