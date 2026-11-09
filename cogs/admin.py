@@ -1,4 +1,3 @@
-
 import datetime
 import discord
 from discord import app_commands
@@ -62,7 +61,7 @@ class Admin(commands.Cog):
 
     set_group = app_commands.Group(name="set", description="系統與頻道參數設定")
 
-  @set_group.command(name="channel", description="設定通告或陷阱頻道")
+    @set_group.command(name="channel", description="設定通告或陷阱頻道")
     @app_commands.choices(type=[
         app_commands.Choice(name="punish", value="punish"),
         app_commands.Choice(name="trap", value="trap"),
@@ -99,6 +98,7 @@ class Admin(commands.Cog):
         elif action == "remove":
             if member.id in self.whitelist_db[guild_id]:
                 self.whitelist_db[guild_id].remove(member.id)
+            await interaction.response.send_message(f"✅ 已將 {member.mention} 移除白名單", ephemeral=True)
 
     @set_group.command(name="autoban", description="開關陷阱頻道自動封鎖功能")
     @app_commands.choices(status=[
