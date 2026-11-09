@@ -29,7 +29,6 @@ bot.allowed_ids = ALLOWED_IDS
 
 @bot.event
 async def on_ready():
-    bot.tree.clear_commands(guild=None)
     await bot.tree.sync()
     print(f"目前登入身份: {bot.user}")
 
