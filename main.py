@@ -38,8 +38,8 @@ async def main():
             "cogs.admin",
             "cogs.music",
             "cogs.tools",
-            "cogs.security"
-            "cogs.ticket"
+            "cogs.security",
+            "cogs.ticket",
             "cogs.voice"
         ]
         for ext in extensions:
