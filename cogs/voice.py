@@ -4,7 +4,6 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Button, Modal, TextInput, Select, UserSelect
 
-
 TRIGGER_CHANNEL_ID = 1530974075902759083
 CATEGORY_ID = 1459692616076624087
 STAFF_ROLE_ID = 1459696673239470338
@@ -16,15 +15,14 @@ WHITELIST_CHANNEL_IDS = {
 
 voice_owners = {}
 
-
 E_MENU_SETTINGS = discord.PartialEmoji(name="menu_settings", id=1531236010413920276)
-E_NAME     = discord.PartialEmoji(name="e_name",     id=1531235954893783070)
-E_LIMIT    = discord.PartialEmoji(name="e_limit",    id=1531235983956377742)
-E_STATUS   = discord.PartialEmoji(name="e_status",   id=1531236041736978563)
+E_NAME  = discord.PartialEmoji(name="e_name",     id=1531235954893783070)
+E_LIMIT   = discord.PartialEmoji(name="e_limit",    id=1531235983956377742)
+E_STATUS   = discord.PartialEmoji(name="e_status",    id=1531236041736978563)
 E_GAME     = discord.PartialEmoji(name="e_game",     id=1531236073768751235)
 E_LFM      = discord.PartialEmoji(name="e_lfm",      id=1531236105914159154)
 E_BITRATE  = discord.PartialEmoji(name="e_bitrate",  id=1531236135202848938)
-E_REGION   = discord.PartialEmoji(name="e_region",   id=1531236162763620422)
+E_REGION   = discord.PartialEmoji(name="e_region",    id=1531236162763620422)
 E_TEXT     = discord.PartialEmoji(name="e_text",     id=1531236193503547565)
 E_NSFW     = discord.PartialEmoji(name="e_nsfw",     id=1531236231122391133)
 E_CLAIM    = discord.PartialEmoji(name="e_claim",    id=1531236263338709093)
@@ -38,7 +36,6 @@ E_GHOST    = discord.PartialEmoji(name="e_ghost",    id=1531237261205573654)
 E_UNGHOST  = discord.PartialEmoji(name="e_unghost",  id=1531237228905496826)
 E_TRANSFER = discord.PartialEmoji(name="e_transfer", id=1531237291639439492)
 
-
 def is_authorized(member: discord.Member, channel_id: int) -> bool:
     owner_id = voice_owners.get(channel_id)
     if member.id == owner_id:
@@ -48,7 +45,6 @@ def is_authorized(member: discord.Member, channel_id: int) -> bool:
     if any(role.id == STAFF_ROLE_ID for role in member.roles):
         return True
     return False
-
 
 class DeleteTextChannelView(View):
     def __init__(self, owner_id: int):
@@ -64,14 +60,12 @@ class DeleteTextChannelView(View):
         await asyncio.sleep(1)
         await interaction.channel.delete()
 
-
 class NameModal(Modal, title="修改頻道名稱"):
     channel_name = TextInput(label="新頻道名稱", placeholder="輸入新的語音頻道名稱...", max_length=100)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.channel.edit(name=self.channel_name.value)
         await interaction.response.send_message(f"✅ 頻道名稱已修改為：**{self.channel_name.value}**", ephemeral=True)
-
 
 class LimitModal(Modal, title="設定人數限制"):
     user_limit = TextInput(label="人數限制 (0 為無限制，上限 99)", placeholder="0", max_length=2)
@@ -87,14 +81,12 @@ class LimitModal(Modal, title="設定人數限制"):
         except ValueError:
             await interaction.response.send_message("❌ 請輸入有效的數字！", ephemeral=True)
 
-
 class StatusModal(Modal, title="設定頻道狀態"):
     status_text = TextInput(label="頻道狀態", placeholder="輸入目前的狀態文字...", max_length=50)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.channel.edit(status=self.status_text.value)
         await interaction.response.send_message(f"✅ 頻道狀態已更新為：**{self.status_text.value}**", ephemeral=True)
-
 
 class BitrateModal(Modal, title="調整音質 (位元率)"):
     bitrate_kbps = TextInput(label="位元率 (kbps, 預設 64, 最高 96/128/256/384)", placeholder="64", max_length=3)
@@ -110,7 +102,6 @@ class BitrateModal(Modal, title="調整音質 (位元率)"):
                 await interaction.response.send_message(f"❌ 請輸入 8 到 {int(max_bitrate/1000)} kbps 之間的數字！", ephemeral=True)
         except ValueError:
             await interaction.response.send_message("❌ 請輸入有效的數字！", ephemeral=True)
-
 
 class UserSelectMenu(UserSelect):
     def __init__(self, action_type: str, owner_id: int):
@@ -144,12 +135,10 @@ class UserSelectMenu(UserSelect):
             await channel.set_permissions(interaction.user, overwrite=None)
             await interaction.response.send_message(f"👑 房主權限已轉移給 {target_member.mention}！")
 
-
 class UserSelectView(View):
     def __init__(self, action_type: str, owner_id: int):
         super().__init__(timeout=60)
         self.add_item(UserSelectMenu(action_type=action_type, owner_id=owner_id))
-
 
 class ChannelSettingsSelect(Select):
     def __init__(self):
@@ -243,7 +232,6 @@ class ChannelSettingsSelect(Select):
             status_msg = "已開啟 (NSFW)" if is_nsfw else "已關閉 (SFW)"
             await interaction.response.send_message(f"✅ 頻道分級已更新為：**{status_msg}**", ephemeral=True)
 
-
 class ChannelPermissionsSelect(Select):
     def __init__(self):
         options = [
@@ -290,13 +278,11 @@ class ChannelPermissionsSelect(Select):
             view = UserSelectView(action_type=selected, owner_id=owner_id)
             await interaction.response.send_message(f"請選擇要進行 **{action_names[selected]}** 操作的成員：", view=view, ephemeral=True)
 
-
 class ControlPanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(ChannelSettingsSelect())
         self.add_item(ChannelPermissionsSelect())
-
 
 class VoiceMaster(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -326,9 +312,9 @@ class VoiceMaster(commands.Cog):
                 description=(
                     f"你好 {member.mention}！\n 使用下方選單調整頻道設定：\n"
                     "──────────────────────────\n"
-                    "**頻道設定[Channel Settings]**\n\n"
+                    "**頻道設定**\n\n"
                     "──────────────────────────\n"
-                    "**頻道權限[Channel Permissions]**"
+                    "**頻道權限**"
                 ),
                 color=discord.Color.from_rgb(47, 49, 54)
             )
@@ -348,9 +334,9 @@ class VoiceMaster(commands.Cog):
                     await before.channel.delete()
                     if channel_id in voice_owners:
                         del voice_owners[channel_id]
+                    pass
                 except discord.NotFound:
                     pass
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VoiceMaster(bot))
