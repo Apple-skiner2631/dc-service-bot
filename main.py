@@ -29,15 +29,14 @@ bot.allowed_ids = ALLOWED_IDS
 
 @bot.event
 async def on_ready():
-
-    test_guild = discord.Object(id=1438023424030146560)
+    try:
+        synced = await bot.tree.sync()
+        print(f"已成功同步 {len(synced)} 個全域斜槓指令")
+    except Exception as e:
+        print(f"全域同步指令失敗: {e}")
+        
+    print(f"目前登入身份: {bot.user}")
     
-
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync(guild=test_guild)
-    
-    print(f"目前登入身份: {bot.user} (指令已完成單一伺服器同步)")
-
 async def main():
     async with bot:
         extensions = [
