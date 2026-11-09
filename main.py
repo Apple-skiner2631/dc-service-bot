@@ -29,8 +29,13 @@ bot.allowed_ids = ALLOWED_IDS
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"目前登入身份: {bot.user}")
+
+    test_guild = discord.Object(id=1438023424030146560)
+    
+    bot.tree.copy_global_to(guild=test_guild)
+    await bot.tree.sync(guild=test_guild)
+    
+    print(f"目前登入身份: {bot.user} (指令已在伺服器同步完成)")
 
 async def main():
     async with bot:
