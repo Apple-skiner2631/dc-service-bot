@@ -210,7 +210,7 @@ class Music(commands.Cog):
                 except:
                     pass
 
-            try:
+try:
                 if is_bilibili and b_audio_url:
                     title, uploader, duration, play_source_url = b_title, b_uploader, b_duration, b_audio_url
                 else:
@@ -235,16 +235,24 @@ class Music(commands.Cog):
                 local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
                 ffmpeg_exe = local_ffmpeg if os.path.exists(local_ffmpeg) else "ffmpeg"
 
-                ffmpeg_opts = {
-                    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                    'options': '-vn -ac 2 -ar 48000'
-                }
+                if is_bilibili:
+                    ffmpeg_opts = {
+                        'before_options': f'-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -headers "Referer: https://www.bilibili.com/\r\nCookie: {BILIBILI_COOKIE}\r\n"',
+                        'options': '-vn -ac 2 -ar 48000'
+                    }
+                else:
+                    ffmpeg_opts = {
+                        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                        'options': '-vn -ac 2 -ar 48000'
+                    }
 
                 source = discord.FFmpegPCMAudio(play_source_url, executable=ffmpeg_exe, **ffmpeg_opts)
                 view = PlayerControlView(interaction, url, play_source_url, title, duration, uploader)
                 volume_source = discord.PCMVolumeTransformer(source, volume=view.current_volume)
 
                 def after_play(error):
+                    if error:
+                        print(f"FFmpeg 播放錯誤: {error}")
                     if view.manual_stop: return
                     if view.is_looping and interaction.guild.voice_client:
                         view.start_time = time.time()
@@ -260,6 +268,7 @@ class Music(commands.Cog):
                 view.message = msg
                 await interaction.followup.send("✅ 音樂開始播放", ephemeral=True)
             except Exception as e:
+                print(f"播放過程發生例外狀況: {e}")
                 await interaction.followup.send(f"❌ 播放失敗: `{str(e)[:100]}`", ephemeral=True)
 
     @app_commands.command(name="stop", description="停止當前音樂播放")
