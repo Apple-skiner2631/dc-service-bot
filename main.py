@@ -30,12 +30,13 @@ bot.allowed_ids = ALLOWED_IDS
 @bot.event
 async def on_ready():
 
-    test_guild = discord.Object(id=1438023424030146560)
+    test_guild = discord.Object(id=你的伺服器ID)
     
-    bot.tree.copy_global_to(guild=test_guild)
+
+    bot.tree.clear_commands(guild=None)
     await bot.tree.sync(guild=test_guild)
     
-    print(f"目前登入身份: {bot.user} (指令已在伺服器同步完成)")
+    print(f"目前登入身份: {bot.user} (指令已完成單一伺服器同步)")
 
 async def main():
     async with bot:
