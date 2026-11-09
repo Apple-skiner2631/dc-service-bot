@@ -30,7 +30,7 @@ bot.allowed_ids = ALLOWED_IDS
 @bot.event
 async def on_ready():
 
-    test_guild = discord.Object(id=你的伺服器ID)
+    test_guild = discord.Object(id=1438023424030146560)
     
 
     bot.tree.clear_commands(guild=None)
