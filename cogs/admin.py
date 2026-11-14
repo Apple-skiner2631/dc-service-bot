@@ -274,7 +274,7 @@ class Admin(commands.Cog):
 
         await interaction.followup.send(f"✅ 已成功將 {count} 名成員移動至 {channel.name}", ephemeral=True)
         
-  @app_commands.command(name="backup", description="導出或還原伺服器結構")
+    @app_commands.command(name="backup", description="導出或還原伺服器結構")
     @app_commands.choices(action=[
         app_commands.Choice(name="create", value="create"),
         app_commands.Choice(name="restore", value="restore")
