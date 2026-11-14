@@ -125,7 +125,7 @@ class Music(commands.Cog):
             return True
         return False
 
-@app_commands.command(name="music", description="語音頻道連線與音樂播放")
+    @app_commands.command(name="music", description="語音頻道連線與音樂播放")
     @app_commands.choices(action=[
         app_commands.Choice(name="join", value="join"),
         app_commands.Choice(name="leave", value="leave"),
