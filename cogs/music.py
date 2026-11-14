@@ -210,7 +210,7 @@ class Music(commands.Cog):
                 except:
                     pass
 
-            try:
+        try:
                 if is_bilibili and b_audio_url:
                     title, uploader, duration, play_source_url = b_title, b_uploader, b_duration, b_audio_url
                 else:
@@ -232,7 +232,7 @@ class Music(commands.Cog):
                     duration = info.get('duration')
                     play_source_url = info['url']
 
-local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
+                local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
                 ffmpeg_exe = local_ffmpeg if os.path.exists(local_ffmpeg) else "ffmpeg"
 
                 if is_bilibili:
