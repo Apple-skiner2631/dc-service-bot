@@ -2,16 +2,8 @@ import os
 import asyncio
 import discord
 from discord.ext import commands
+from discord.ext.commands import Bot
 from discord.ui import View, Button, Modal, TextInput, Select, UserSelect
-
-TRIGGER_CHANNEL_ID = 1530974075902759083
-CATEGORY_ID = 1459692616076624087
-STAFF_ROLE_ID = 1459696673239470338
-
-WHITELIST_CHANNEL_IDS = {
-    TRIGGER_CHANNEL_ID,
-    1531994737819779112
-}
 
 voice_owners = {}
 
@@ -41,8 +33,6 @@ def is_authorized(member: discord.Member, channel_id: int) -> bool:
     if member.id == owner_id:
         return True
     if member.guild_permissions.manage_channels:
-        return True
-    if any(role.id == STAFF_ROLE_ID for role in member.roles):
         return True
     return False
 
@@ -192,14 +182,10 @@ class ChannelSettingsSelect(Select):
             await interaction.response.send_message("ℹ️ 目前伺服器由 Discord 自動指派最佳語音區域。", ephemeral=True)
         
         elif selected == "text":
-            staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True)
             }
-            if staff_role:
-                overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-
             for member in channel.members:
                 overwrites[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
@@ -287,12 +273,21 @@ class ControlPanelView(View):
 class VoiceMaster(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        if not hasattr(self.bot, "config_db"):
+            self.bot.config_db = {}
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        if after.channel and after.channel.id == TRIGGER_CHANNEL_ID:
+        guild_id = member.guild.id
+        guild_config = self.bot.config_db.get(guild_id, {})
+        trigger_channel_id = guild_config.get("room")
+
+        if not trigger_channel_id:
+            return
+
+        if after.channel and after.channel.id == trigger_channel_id:
             guild = member.guild
-            category = guild.get_channel(CATEGORY_ID)
+            category = after.channel.category
 
             if not category or not isinstance(category, discord.CategoryChannel):
                 return
@@ -304,7 +299,6 @@ class VoiceMaster(commands.Cog):
             )
 
             voice_owners[new_channel.id] = member.id
-
             await member.move_to(new_channel)
 
             embed = discord.Embed(
@@ -324,19 +318,21 @@ class VoiceMaster(commands.Cog):
             view = ControlPanelView()
             await new_channel.send(embed=embed, view=view)
 
-        if before.channel and before.channel.category_id == CATEGORY_ID:
-            if before.channel.id in WHITELIST_CHANNEL_IDS:
-                return
+        if before.channel and before.channel.category and before.channel.category.id == after.channel.category.id if (after and after.channel and after.channel.category) else False:
+            pass
 
-            if len(before.channel.members) == 0:
-                channel_id = before.channel.id
-                try:
-                    await before.channel.delete()
-                    if channel_id in voice_owners:
-                        del voice_owners[channel_id]
-                    pass
-                except discord.NotFound:
-                    pass
+        if before.channel and before.channel.id != trigger_channel_id:
+            if before.channel.category and before.channel.category.channels:
+                if len(before.channel.members) == 0:
+                    if before.channel.id == trigger_channel_id:
+                        return
+                    channel_id = before.channel.id
+                    try:
+                        await before.channel.delete()
+                        if channel_id in voice_owners:
+                            del voice_owners[channel_id]
+                    except discord.NotFound:
+                        pass
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VoiceMaster(bot))
