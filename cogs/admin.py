@@ -256,16 +256,24 @@ class Admin(commands.Cog):
     async def move_all(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         if not self.is_allowed(interaction):
             return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
+        
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            return await interaction.response.send_message("⚠️ 目標頻道或您所在的狀態有誤。", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+        
         count = 0
-        for member in interaction.guild.members:
-            if member.voice:
+
+        for vc in interaction.guild.voice_channels:
+            for member in vc.members:
                 try:
                     await member.move_to(channel)
                     count += 1
                 except:
                     pass
-        await interaction.response.send_message(f"✅ 已移動 {count} 名成員", ephemeral=True)
 
+        await interaction.followup.send(f"✅ 已成功將 {count} 名成員移動至 {channel.name}", ephemeral=True)
+        
   @app_commands.command(name="backup", description="導出或還原伺服器結構")
     @app_commands.choices(action=[
         app_commands.Choice(name="create", value="create"),
