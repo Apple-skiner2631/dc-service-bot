@@ -281,7 +281,7 @@ class Music(commands.Cog):
         else:
             await interaction.response.send_message("⚠️ 機器人不在語音頻道中", ephemeral=True)
 
-   @app_commands.command(name="tts", description="文字轉語音朗讀")
+    @app_commands.command(name="tts", description="文字轉語音朗讀")
     @app_commands.choices(lang=[
         app_commands.Choice(name="國語 (TW)", value="zh-TW-HsiaoChenNeural"),
         app_commands.Choice(name="粵語 (HK)", value="zh-HK-WanLungNeural"),
@@ -314,10 +314,9 @@ class Music(commands.Cog):
             await interaction.response.defer(ephemeral=True)
             communicate = edge_tts.Communicate(text, lang)
             audio_data = b""
-            async async_generator in [communicate.stream()]:
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_data += chunk["data"]
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_data += chunk["data"]
 
             if not audio_data:
                 return await interaction.followup.send("❌ TTS 生成語音資料失敗（內容為空）", ephemeral=True)
