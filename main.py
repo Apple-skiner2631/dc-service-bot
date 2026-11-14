@@ -29,13 +29,12 @@ bot.allowed_ids = ALLOWED_IDS
 
 @bot.event
 async def on_ready():
+    print(f"登入成功：{bot.user}")
     try:
         synced = await bot.tree.sync()
-        print(f"已成功同步 {len(synced)} 個全域斜槓指令")
+        print(f"已成功同步 {len(synced)} 個斜槓指令")
     except Exception as e:
-        print(f"全域同步指令失敗: {e}")
-        
-    print(f"目前登入身份: {bot.user}")
+        print(f"同步指令失敗: {e}")
     
 async def main():
     async with bot:
