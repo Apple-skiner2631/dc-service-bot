@@ -22,44 +22,48 @@ def keep_alive():
     t.start()
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+EXTENSIONS = [
+    "cogs.admin",
+    "cogs.music",
+    "cogs.tools",
+    "cogs.security",
+    "cogs.ticket",
+    "cogs.voice",
+]
+
+class ServiceBot(commands.Bot):
+    async def setup_hook(self):
+        for ext in EXTENSIONS:
+            try:
+                await self.load_extension(ext)
+                logging.info(f"成功載入模組: {ext}")
+            except Exception:
+                logging.exception(f"載入模組 {ext} 失敗")
+
+        try:
+            synced = await self.tree.sync()
+            logging.info(f"✅ 成功同步了 {len(synced)} 個斜槓指令: {[c.name for c in synced]}")
+        except Exception:
+            logging.exception("❌ 同步指令發生錯誤")
+
+bot = ServiceBot(command_prefix="!", intents=intents, help_command=None)
 
 ALLOWED_IDS = [1008278721007992863, 1359813653544566815]
 bot.allowed_ids = ALLOWED_IDS
 
 @bot.event
 async def on_ready():
-    print(f"機器人已成功登入: {bot.user}")
-    
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ 成功同步了 {len(synced)} 個斜槓指令")
-    except Exception as e:
-        print(f"❌ 同步指令發生錯誤: {e}")
-    
+    logging.info(f"機器人已成功登入: {bot.user}")
+
 async def main():
+    token = os.environ.get("TOKEN")
+    if not token:
+        logging.error("找不到 TOKEN 環境變數！")
+        return
+
+    keep_alive()
     async with bot:
-        extensions = [
-            "cogs.admin",
-            "cogs.music",
-            "cogs.tools",
-            "cogs.security",
-            "cogs.ticket",
-            "cogs.voice"
-        ]
-        for ext in extensions:
-            try:
-                await bot.load_extension(ext)
-                print(f"成功載入模組: {ext}")
-            except Exception as e:
-                print(f"載入模組 {ext} 失敗: {e}")
-        
-        token = os.environ.get("TOKEN")
-        if not token:
-            print("找不到 TOKEN 環境變數！")
-            return
-        
-        keep_alive()
         await bot.start(token)
 
 if __name__ == "__main__":
