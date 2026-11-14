@@ -125,7 +125,7 @@ class Music(commands.Cog):
             return True
         return False
 
-    @app_commands.command(name="music", description="語音頻道連線與音樂播放")
+@app_commands.command(name="music", description="語音頻道連線與音樂播放")
     @app_commands.choices(action=[
         app_commands.Choice(name="join", value="join"),
         app_commands.Choice(name="leave", value="leave"),
@@ -210,7 +210,7 @@ class Music(commands.Cog):
                 except:
                     pass
 
-        try:
+            try:
                 if is_bilibili and b_audio_url:
                     title, uploader, duration, play_source_url = b_title, b_uploader, b_duration, b_audio_url
                 else:
@@ -270,7 +270,7 @@ class Music(commands.Cog):
             except Exception as e:
                 print(f"播放過程發生例外狀況: {e}")
                 await interaction.followup.send(f"❌ 播放失敗: `{str(e)[:100]}`", ephemeral=True)
-
+                
     @app_commands.command(name="stop", description="停止當前音樂播放")
     async def stop_music(self, interaction: discord.Interaction):
         if not self.is_allowed(interaction):
