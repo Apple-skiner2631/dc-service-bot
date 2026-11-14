@@ -232,17 +232,17 @@ class Music(commands.Cog):
                     duration = info.get('duration')
                     play_source_url = info['url']
 
-                local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
+local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
                 ffmpeg_exe = local_ffmpeg if os.path.exists(local_ffmpeg) else "ffmpeg"
 
                 if is_bilibili:
                     ffmpeg_opts = {
-                        'before_options': f'-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -headers "Referer: https://www.bilibili.com/\r\nCookie: {BILIBILI_COOKIE}\r\n"',
+                        'before_options': f'-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -headers "Referer: https://www.bilibili.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nCookie: {BILIBILI_COOKIE}\r\n"',
                         'options': '-vn -ac 2 -ar 48000'
                     }
                 else:
                     ffmpeg_opts = {
-                        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -analyzeduration 0 -probesize 32',
                         'options': '-vn -ac 2 -ar 48000'
                     }
 
@@ -281,7 +281,7 @@ class Music(commands.Cog):
         else:
             await interaction.response.send_message("⚠️ 機器人不在語音頻道中", ephemeral=True)
 
-    @app_commands.command(name="tts", description="文字轉語音朗讀")
+   @app_commands.command(name="tts", description="文字轉語音朗讀")
     @app_commands.choices(lang=[
         app_commands.Choice(name="國語 (TW)", value="zh-TW-HsiaoChenNeural"),
         app_commands.Choice(name="粵語 (HK)", value="zh-HK-WanLungNeural"),
@@ -299,36 +299,50 @@ class Music(commands.Cog):
 
         vc = interaction.guild.voice_client
         if not vc:
-            vc = await interaction.user.voice.channel.connect()
+            try:
+                vc = await interaction.user.voice.channel.connect(reconnect=True, timeout=20)
+            except Exception as e:
+                return await interaction.response.send_message(f"❌ 無法進入頻道: `{e}`", ephemeral=True)
         elif vc.channel != interaction.user.voice.channel:
             await vc.move_to(interaction.user.voice.channel)
 
-        if vc.is_playing():
+        if vc.is_playing() or vc.is_paused():
             vc.stop()
+            await asyncio.sleep(0.5)
 
         try:
             await interaction.response.defer(ephemeral=True)
             communicate = edge_tts.Communicate(text, lang)
             audio_data = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_data += chunk["data"]
+            async async_generator in [communicate.stream()]:
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_data += chunk["data"]
+
+            if not audio_data:
+                return await interaction.followup.send("❌ TTS 生成語音資料失敗（內容為空）", ephemeral=True)
 
             audio_fp = io.BytesIO(audio_data)
             local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
             ffmpeg_exe = local_ffmpeg if os.path.exists(local_ffmpeg) else "ffmpeg"
+            ffmpeg_opts = {
+                'before_options': '-f mp3 -loglevel warning',
+                'options': '-vn -ac 2 -ar 48000 -b:a 128k'
+            }
 
             source = discord.FFmpegPCMAudio(
                 audio_fp,
                 pipe=True,
                 executable=ffmpeg_exe,
-                before_options="-f mp3",
-                options="-vn -ac 2 -ar 48000"
+                **ffmpeg_opts
             )
-            vc.play(source)
+            volume_source = discord.PCMVolumeTransformer(source, volume=1.0)
+            
+            vc.play(volume_source)
             await interaction.followup.send(f"🎤 正在朗讀：\"{text}\"", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ TTS 播放失敗: {e}", ephemeral=True)
+            print(f"TTS 播放發生例外狀況: {e}")
+            await interaction.followup.send(f"❌ TTS 播放失敗: `{str(e)[:100]}`", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
