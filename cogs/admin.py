@@ -226,6 +226,7 @@ class Admin(commands.Cog):
             await interaction.response.send_message(f"✅ 已清除 {amount} 則訊息", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ 清理失敗: {e}", ephemeral=True)
+            
 @app_commands.command(name="server_mute", description="全服文字與語音禁言鎖定")
     @app_commands.choices(status=[
         app_commands.Choice(name="lock", value="lock"),
