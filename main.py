@@ -2,6 +2,7 @@ import os
 import asyncio
 import importlib.util
 import logging
+import shutil
 from threading import Thread
 from flask import Flask, render_template
 import discord
@@ -57,6 +58,13 @@ class ServiceBot(commands.Bot):
         logging.info(f"discord.py 版本: {discord.__version__}")
         logging.info(f"davey 已安裝: {importlib.util.find_spec('davey') is not None}")
         logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
+        if not discord.opus.is_loaded():
+            for name in ("libopus.so.0", "libopus.so", "opus"):
+                try:
+                    discord.opus.load_opus(name)
+                    break
+                except Exception:
+                    continue
         logging.info(f"Opus 已載入: {discord.opus.is_loaded()}")
         logging.info(f"ffmpeg 路徑: {shutil.which('ffmpeg')}")
         logging.info(f"runtime_bin/ffmpeg 存在: {os.path.exists(os.path.join(os.getcwd(), 'runtime_bin', 'ffmpeg'))}")
