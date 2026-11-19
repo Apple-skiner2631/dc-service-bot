@@ -1,11 +1,13 @@
 import os
 import asyncio
+import importlib.util
 import logging
 from threading import Thread
 from flask import Flask, render_template
 import discord
 from discord import app_commands
 from discord.ext import commands
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
@@ -52,6 +54,17 @@ class ServiceBot(commands.Bot):
         self.guild_cleanup_done = False
 
     async def setup_hook(self):
+        logging.info(f"discord.py 版本: {discord.__version__}")
+        logging.info(f"davey 已安裝: {importlib.util.find_spec('davey') is not None}")
+        logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
+        logging.info(f"Opus 已載入: {discord.opus.is_loaded()}")
+
+        for ext in EXTENSIONS:
+            try:
+                await self.load_extension(ext)
+                logging.info(f"成功載入模組: {ext}")
+            except Exception:
+                logging.exception(f"載入模組 {ext} 失敗")
         for ext in EXTENSIONS:
             try:
                 await self.load_extension(ext)
