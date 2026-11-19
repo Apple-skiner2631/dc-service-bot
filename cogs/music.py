@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import time
-
+import shutil
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -16,8 +16,13 @@ BILIBILI_COOKIE = os.getenv("BILI_COOKIE", "").replace("\r", "").replace("\n", "
 
 
 def get_ffmpeg_path() -> str:
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
     local_ffmpeg = os.path.join(os.getcwd(), "runtime_bin", "ffmpeg")
-    return local_ffmpeg if os.path.exists(local_ffmpeg) else "ffmpeg"
+    if os.path.isfile(local_ffmpeg) and os.access(local_ffmpeg, os.X_OK):
+        return local_ffmpeg
+    return "ffmpeg"
 
 
 def fetch_bilibili_info(url: str):
@@ -445,7 +450,11 @@ class Music(commands.Cog):
                 before_options="-f mp3 -loglevel warning",
                 options="-vn -ac 2 -ar 48000 -b:a 128k",
             )
-            vc.play(discord.PCMVolumeTransformer(source, volume=1.0))
+            logging.info(f"TTS 準備播放: 已連線={vc.is_connected()} 頻道={vc.channel} 音訊大小={len(audio_data)} bytes ffmpeg={get_ffmpeg_path()}")
+            vc.play(
+                discord.PCMVolumeTransformer(source, volume=1.0),
+                after=lambda err: logging.info(f"TTS 播放結束 錯誤={err}"),
+            )
             await interaction.followup.send(f"🎤 正在朗讀：\"{text}\"", ephemeral=True)
         except Exception as e:
             logging.exception("TTS 播放發生例外狀況")
