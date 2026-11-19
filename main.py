@@ -58,6 +58,8 @@ class ServiceBot(commands.Bot):
         logging.info(f"davey 已安裝: {importlib.util.find_spec('davey') is not None}")
         logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
         logging.info(f"Opus 已載入: {discord.opus.is_loaded()}")
+        logging.info(f"ffmpeg 路徑: {shutil.which('ffmpeg')}")
+        logging.info(f"runtime_bin/ffmpeg 存在: {os.path.exists(os.path.join(os.getcwd(), 'runtime_bin', 'ffmpeg'))}")
 
         for ext in EXTENSIONS:
             try:
