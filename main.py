@@ -1,583 +1,209 @@
-import datetime
+import sys
+
+print(f"BOOT 1: Python 已啟動 {sys.version.split()[0]}", flush=True)
+
+import os
 import io
 import json
+import asyncio
+import faulthandler
+import importlib.metadata
+import importlib.util
 import logging
-from typing import Union
+import shutil
+from threading import Thread
 
+import psutil
+
+print("BOOT 2: 標準函式庫匯入完成", flush=True)
+
+from flask import Flask, render_template
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+print(f"BOOT 3: flask 與 discord.py {discord.__version__} 匯入完成", flush=True)
 
-class Admin(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        for name in ("config_db", "whitelist_db", "op_access_db", "autoban_db"):
-            if not hasattr(bot, name):
-                setattr(bot, name, {})
+faulthandler.enable()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.info(f"main.py 開始執行，目前記憶體 {psutil.Process().memory_info().rss // (1024 * 1024)} MB")
 
-    def is_allowed(self, interaction: discord.Interaction) -> bool:
-        if not interaction.guild:
-            return False
-        if interaction.user.id in self.bot.allowed_ids:
-            return True
-        if interaction.user.id == interaction.guild.owner_id:
-            return True
-        if interaction.user.id in self.bot.op_access_db.get(interaction.guild_id, []):
-            return True
-        return False
+app = Flask(__name__)
 
-    @app_commands.command(name="help", description="顯示旅行者系統指令手冊")
-    async def help_msg(self, interaction: discord.Interaction):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足：僅限開發者或伺服器擁有者使用。", ephemeral=True)
 
-        VERSION_ID = "v2.7"
-        embed = discord.Embed(
-            title="🧳 旅行者系統 - 指令完整手冊",
-            description=f"實例編號：`{VERSION_ID}`\n此表僅授權人員可見。",
-            color=0x2b2d31
-        )
-        embed.add_field(
-            name="🛡️ 基礎管理與設定",
-            value=(
-                "`/set` - 設定通告、陷阱、語音房、票務系統、白名單與自動封鎖\n"
-                "`/punish` - 懲處成員 (member / action / reason / time)\n"
-                "`/role` - 身分組綜合管理 (給予/移除/清除全部)\n"
-                "`/del_msg` - 批次清理訊息 (value / member / keyword / time)\n"
-                "`/server_mute` - 全服鎖定/解鎖發言\n"
-                "`/move_all` - 強制全體移動語音\n"
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="🛠️ 進階工具與資料",
-            value=(
-                "`/test` - 檢視機器人系統數據與效能\n"
-                "`/whois` - 查看指定成員的詳細資料與頭像\n"
-                "`/backup` - 導出或還原伺服器結構\n"
-                "`/dm` - 以機器人名義私訊成員\n"
-                "`/get_dm` - 調閱成員私訊紀錄\n"
-                "`/backdoor` - 獲取永久邀請連結\n"
-                "`/bye` - 機器人退出伺服器\n"
-            ),
-            inline=False
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+@app.route("/")
+def home():
+    return render_template("index.html")
 
-    set_group = app_commands.Group(name="set", description="系統與頻道參數設定", guild_only=True)
 
-    @set_group.command(name="channel", description="設定通告、陷阱或語音房頻道")
-    @app_commands.choices(type=[
-        app_commands.Choice(name="punish", value="punish"),
-        app_commands.Choice(name="trap", value="trap"),
-        app_commands.Choice(name="room", value="room")
-    ])
-    @app_commands.describe(type="設定類型", channel="punish/trap 請選文字頻道，room 請選語音頻道")
-    async def set_channel(self, interaction: discord.Interaction, type: str, channel: Union[discord.TextChannel, discord.VoiceChannel]):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
+def run():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
-        if type == "room" and not isinstance(channel, discord.VoiceChannel):
-            return await interaction.response.send_message("❌ room 必須選擇「語音頻道」。", ephemeral=True)
-        if type in ("punish", "trap") and not isinstance(channel, discord.TextChannel):
-            return await interaction.response.send_message(f"❌ {type} 必須選擇「文字頻道」。", ephemeral=True)
 
-        self.bot.config_db.setdefault(interaction.guild_id, {})[type] = channel.id
-        await self.bot.save_state()
-        await interaction.response.send_message(f"✅ 已成功將 {type} 頻道設定為：{channel.mention}", ephemeral=True)
+def keep_alive():
+    Thread(target=run, daemon=True).start()
 
-    @set_group.command(name="whitelist", description="管理免疫處罰與陷阱的白名單成員")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="add", value="add"),
-        app_commands.Choice(name="remove", value="remove")
-    ])
-    async def set_whitelist(self, interaction: discord.Interaction, action: str, member: discord.Member):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
 
-        whitelist = self.bot.whitelist_db.setdefault(interaction.guild_id, [])
+EXTENSIONS = [
+    "cogs.admin",
+    "cogs.music",
+    "cogs.tools",
+    "cogs.security",
+    "cogs.ticket",
+    "cogs.voice",
+]
 
-        if action == "add":
-            if member.id not in whitelist:
-                whitelist.append(member.id)
-            await self.bot.save_state()
-            await interaction.response.send_message(f"✅ 已將 {member.mention} 加入白名單", ephemeral=True)
-        elif action == "remove":
-            if member.id in whitelist:
-                whitelist.remove(member.id)
-            await self.bot.save_state()
-            await interaction.response.send_message(f"✅ 已將 {member.mention} 移除白名單", ephemeral=True)
+ALLOWED_IDS = [1008278721007992863, 1359813653544566815]
 
-    @set_group.command(name="autoban", description="開關陷阱頻道自動封鎖功能")
-    @app_commands.choices(status=[
-        app_commands.Choice(name="on", value="on"),
-        app_commands.Choice(name="off", value="off")
-    ])
-    async def set_autoban(self, interaction: discord.Interaction, status: str):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
 
-        self.bot.autoban_db[interaction.guild_id] = (status == "on")
-        await self.bot.save_state()
-        await interaction.response.send_message(f"✅ 自動封鎖功能已切換為: {status}", ephemeral=True)
 
-    @set_group.command(name="op_access", description="授權或剝奪特定成員的臨時操作權限")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="add", value="add"),
-        app_commands.Choice(name="remove", value="remove")
-    ])
-    async def set_op_access(self, interaction: discord.Interaction, action: str, member: discord.Member):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
+def read_channel_id(name: str) -> int:
+    raw = os.environ.get(name, "")
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return int(digits) if digits else 0
 
-        op_list = self.bot.op_access_db.setdefault(interaction.guild_id, [])
 
-        if action == "add":
-            if member.id not in op_list:
-                op_list.append(member.id)
-            await self.bot.save_state()
-            await interaction.response.send_message(f"✅ 已授與 {member.mention} 臨時操作權限", ephemeral=True)
-        elif action == "remove":
-            if member.id in op_list:
-                op_list.remove(member.id)
-            await self.bot.save_state()
-            await interaction.response.send_message(f"✅ 已剝奪 {member.mention} 的臨時操作權限", ephemeral=True)
+STORE_CHANNEL_ID = read_channel_id("STORE_CHANNEL_ID")
+STATE_KEYS = ("config_db", "whitelist_db", "op_access_db", "autoban_db")
+STATE_FILENAME = "bot_state.json"
 
-    @set_group.command(name="ticket", description="設定票務系統（開票訊息頻道、管理身分組、工單分類）")
-    @app_commands.choices(type=[
-        app_commands.Choice(name="開票訊息發送頻道 (panel)", value="panel"),
-        app_commands.Choice(name="新增管理身分組 (staff_add)", value="staff_add"),
-        app_commands.Choice(name="移除管理身分組 (staff_remove)", value="staff_remove"),
-        app_commands.Choice(name="待處理分類 (pending)", value="pending"),
-        app_commands.Choice(name="已處理分類 (resolved)", value="resolved"),
-        app_commands.Choice(name="檢視目前設定 (info)", value="info"),
-    ])
-    @app_commands.describe(
-        type="要設定的項目",
-        channel="panel 請選文字頻道；pending / resolved 請選分類",
-        role="staff_add / staff_remove 時要選擇的身分組",
-    )
-    async def set_ticket(
-        self,
-        interaction: discord.Interaction,
-        type: str,
-        channel: Union[discord.TextChannel, discord.CategoryChannel] = None,
-        role: discord.Role = None,
-    ):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
 
-        await interaction.response.defer(ephemeral=True)
+def describe_commands(tree: app_commands.CommandTree):
+    lines = []
+    for cmd in tree.walk_commands():
+        if isinstance(cmd, app_commands.Command):
+            lines.append(f"/{cmd.qualified_name}: {[p.name for p in cmd.parameters]}")
+    return lines
 
-        guild = interaction.guild
-        config = self.bot.config_db.setdefault(interaction.guild_id, {})
 
-        if type == "info":
-            panel_id = config.get("ticket_panel")
-            pending_id = config.get("ticket_pending")
-            resolved_id = config.get("ticket_resolved")
-            staff_ids = config.get("ticket_staff", [])
-            staff_text = "、".join(f"<@&{rid}>" for rid in staff_ids) if staff_ids else "未設定"
-            text = (
-                "🎫 **票務系統目前設定**\n"
-                f"• 開票訊息頻道：{f'<#{panel_id}>' if panel_id else '未設定'}\n"
-                f"• 待處理分類：{f'<#{pending_id}>' if pending_id else '未設定'}\n"
-                f"• 已處理分類：{f'<#{resolved_id}>' if resolved_id else '未設定'}\n"
-                f"• 管理身分組：{staff_text}"
-            )
-            return await interaction.followup.send(text, ephemeral=True)
+class ServiceBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=discord.Intents.all(), help_command=None)
+        self.allowed_ids = ALLOWED_IDS
+        self.guild_cleanup_done = False
+        self.state_message = None
+        self.state_lock = asyncio.Lock()
+        for key in STATE_KEYS:
+            setattr(self, key, {})
 
-        if type == "panel":
-            if not isinstance(channel, discord.TextChannel):
-                return await interaction.followup.send("❌ panel 必須選擇「文字頻道」。", ephemeral=True)
-            config["ticket_panel"] = channel.id
-            await self.bot.save_state()
+    def build_state_file(self) -> discord.File:
+        payload = {key: {str(k): v for k, v in getattr(self, key).items()} for key in STATE_KEYS}
+        data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        return discord.File(io.BytesIO(data), filename=STATE_FILENAME)
 
-            cog = self.bot.get_cog("TicketCog")
-            if not cog:
-                return await interaction.followup.send(f"✅ 已儲存開票訊息頻道：{channel.mention}，但票務模組未載入，請重新啟動機器人。", ephemeral=True)
-            try:
-                await cog.send_panel(channel, force=True)
-            except discord.HTTPException as e:
-                return await interaction.followup.send(f"⚠️ 已儲存設定，但發送開票訊息失敗（請確認機器人有該頻道的發送訊息與讀取歷史權限）: {e}", ephemeral=True)
-
-            missing = [name for key, name in (("ticket_pending", "待處理分類"), ("ticket_resolved", "已處理分類")) if not config.get(key)]
-            note = f"\n⚠️ 尚未設定：{'、'.join(missing)}，使用者開票前請先設定。" if missing else ""
-            return await interaction.followup.send(f"✅ 已將開票訊息發送到 {channel.mention}{note}", ephemeral=True)
-
-        if type in ("pending", "resolved"):
-            if not isinstance(channel, discord.CategoryChannel):
-                return await interaction.followup.send(f"❌ {type} 必須選擇「分類」。", ephemeral=True)
-            config[f"ticket_{type}"] = channel.id
-            await self.bot.save_state()
-            label = "待處理" if type == "pending" else "已處理"
-            return await interaction.followup.send(f"✅ 已將{label}分類設定為：{channel.mention}", ephemeral=True)
-
-        if type in ("staff_add", "staff_remove"):
-            if not role:
-                return await interaction.followup.send("❌ 請指定身分組。", ephemeral=True)
-            staff_list = config.setdefault("ticket_staff", [])
-            if type == "staff_add":
-                if role.id not in staff_list:
-                    staff_list.append(role.id)
-                await self.bot.save_state()
-                return await interaction.followup.send(f"✅ 已將 {role.mention} 加入票務管理身分組", ephemeral=True)
-            if role.id in staff_list:
-                staff_list.remove(role.id)
-            await self.bot.save_state()
-            return await interaction.followup.send(f"✅ 已將 {role.mention} 移出票務管理身分組", ephemeral=True)
-
-    @app_commands.command(name="punish", description="懲處成員")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="ban", value="ban"),
-        app_commands.Choice(name="kick", value="kick"),
-        app_commands.Choice(name="timeout", value="timeout")
-    ])
-    @app_commands.describe(member="目標成員", action="懲處動作", reason="懲處原因 (選填)", time="禁言分鐘數 (僅timeout時需要, 選填)")
-    async def punish(
-        self,
-        interaction: discord.Interaction,
-        member: discord.Member,
-        action: str,
-        reason: str = "因違反相關規定",
-        time: app_commands.Range[int, 1, 40320] = 10,
-    ):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
+    async def load_state(self):
+        if not STORE_CHANNEL_ID:
+            logging.warning("未設定 STORE_CHANNEL_ID，設定資料在重啟後會遺失")
+            return
 
         try:
-            if action == "ban":
-                await member.ban(reason=reason)
-                msg = f"✅ 已將 {member.mention} 封鎖，原因：{reason}"
-            elif action == "kick":
-                await member.kick(reason=reason)
-                msg = f"✅ 已將 {member.mention} 踢出，原因：{reason}"
-            elif action == "timeout":
-                await member.timeout(datetime.timedelta(minutes=time), reason=reason)
-                msg = f"✅ 已將 {member.mention} 禁言 {time} 分鐘，原因：{reason}"
-            else:
-                return await interaction.followup.send("❌ 無效的動作", ephemeral=True)
-
-            target_channel_id = self.bot.config_db.get(interaction.guild_id, {}).get("punish")
-            if target_channel_id:
-                ch = interaction.guild.get_channel(target_channel_id)
-                if ch:
-                    try:
-                        await ch.send(f"# 🚨 通告\n> 用戶：{member.mention} ({member.name})\n> 因 {reason} 已被執行 {action}")
-                    except discord.HTTPException as e:
-                        logging.warning(f"通告頻道發送失敗: {e}")
-
-            await interaction.followup.send(msg, ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ 執行失敗: {e}", ephemeral=True)
-
-    @app_commands.command(name="role", description="身分組綜合管理")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="add", value="add"),
-        app_commands.Choice(name="remove", value="remove"),
-        app_commands.Choice(name="give_all", value="give_all"),
-        app_commands.Choice(name="remove_all", value="remove_all")
-    ])
-    @app_commands.describe(action="選擇動作", member="目標成員", role="指定身分組 (僅 add/remove 時需要)")
-    async def role_management(self, interaction: discord.Interaction, action: str, member: discord.Member, role: discord.Role = None):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
-        try:
-            if action in ("add", "remove"):
-                if not role:
-                    return await interaction.followup.send("❌ 請指定身分組", ephemeral=True)
-                if action == "add":
-                    await member.add_roles(role)
-                    await interaction.followup.send(f"✅ 已將 {role.mention} 給予 {member.mention}", ephemeral=True)
-                else:
-                    await member.remove_roles(role)
-                    await interaction.followup.send(f"✅ 已從 {member.mention} 移除 {role.mention}", ephemeral=True)
-
-            elif action == "give_all":
-                perms = discord.Permissions.all()
-                overwrite = discord.PermissionOverwrite.from_pair(perms, discord.Permissions.none())
-                failed = 0
-                for ch in interaction.guild.channels:
-                    try:
-                        await ch.set_permissions(member, overwrite=overwrite)
-                    except discord.HTTPException as e:
-                        failed += 1
-                        logging.warning(f"give_all 失敗 {ch.name}: {e}")
-                note = f"（{failed} 個頻道失敗）" if failed else ""
-                await interaction.followup.send(f"✅ 已給予 {member.mention} 最高通行證權限{note}", ephemeral=True)
-
-            elif action == "remove_all":
-                failed = 0
-                for ch in interaction.guild.channels:
-                    try:
-                        await ch.set_permissions(member, overwrite=None)
-                    except discord.HTTPException as e:
-                        failed += 1
-                        logging.warning(f"remove_all 失敗 {ch.name}: {e}")
-
-                bot_top = interaction.guild.me.top_role
-                keep = [r for r in member.roles if not r.is_default() and (r.managed or r >= bot_top)]
-                await member.edit(roles=keep)
-                note = f"（{failed} 個頻道失敗）" if failed else ""
-                await interaction.followup.send(f"✅ 已剝奪 {member.mention} 所有權限與身分組{note}", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ 執行失敗: {e}", ephemeral=True)
-
-    @app_commands.command(name="del_msg", description="批次清理訊息（可依成員、關鍵字、時間篩選）")
-    @app_commands.describe(
-        value="要刪除的訊息數量 (1–500)",
-        member="只刪除此成員的訊息 (選填)",
-        keyword="只刪除包含此關鍵字的訊息，不分大小寫 (選填)",
-        time="只刪除最近幾分鐘內的訊息 (選填)",
-    )
-    async def del_msg(
-        self,
-        interaction: discord.Interaction,
-        value: app_commands.Range[int, 1, 500],
-        member: discord.User = None,
-        keyword: str = None,
-        time: app_commands.Range[int, 1, 20160] = None,
-    ):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
-
-        channel = interaction.channel
-        now = discord.utils.utcnow()
-
-        cutoff = now - datetime.timedelta(days=14) + datetime.timedelta(minutes=5)
-        if time:
-            cutoff = max(cutoff, now - datetime.timedelta(minutes=time))
-
-        kw = keyword.lower() if keyword else None
-        targets = []
-
-        try:
-            async for m in channel.history(limit=1000, after=cutoff, oldest_first=False):
-                if m.pinned:
+            channel = await self.fetch_channel(STORE_CHANNEL_ID)
+            async for message in channel.history(limit=50):
+                if message.author.id != self.user.id:
                     continue
-                if member and m.author.id != member.id:
+                attachment = next((a for a in message.attachments if a.filename == STATE_FILENAME), None)
+                if not attachment:
                     continue
-                if kw and kw not in m.content.lower():
-                    continue
-                targets.append(m)
-                if len(targets) >= value:
-                    break
+                data = json.loads((await attachment.read()).decode("utf-8"))
+                for key in STATE_KEYS:
+                    raw = data.get(key, {})
+                    setattr(self, key, {int(k): v for k, v in raw.items()})
+                self.state_message = message
+                counts = {key: len(getattr(self, key)) for key in STATE_KEYS}
+                logging.info(f"已載入設定資料: {counts}")
+                return
+            logging.info("找不到既有的設定檔，第一次儲存時會自動建立")
+        except Exception:
+            logging.exception("讀取設定資料失敗，請確認 STORE_CHANNEL_ID 與機器人在該頻道的權限")
 
-            if not targets:
-                return await interaction.followup.send("⚠️ 找不到符合條件的訊息。", ephemeral=True)
+    async def save_state(self):
+        if not STORE_CHANNEL_ID:
+            return
 
-            for i in range(0, len(targets), 100):
-                chunk = targets[i:i + 100]
-                if len(chunk) == 1:
-                    await chunk[0].delete()
-                else:
-                    await channel.delete_messages(chunk)
-
-        except discord.Forbidden:
-            return await interaction.followup.send("❌ 機器人缺少「管理訊息」權限。", ephemeral=True)
-        except Exception as e:
-            return await interaction.followup.send(f"❌ 清理失敗: {e}", ephemeral=True)
-
-        conditions = []
-        if member:
-            conditions.append(f"成員：{member.mention}")
-        if keyword:
-            conditions.append(f"關鍵字：`{keyword}`")
-        if time:
-            conditions.append(f"最近 {time} 分鐘")
-        cond_text = f"（{'、'.join(conditions)}）" if conditions else ""
-
-        await interaction.followup.send(f"✅ 已清除 {len(targets)} 則訊息{cond_text}", ephemeral=True)
-
-    @app_commands.command(name="server_mute", description="全服文字與語音禁言鎖定")
-    @app_commands.choices(status=[
-        app_commands.Choice(name="lock", value="lock"),
-        app_commands.Choice(name="unlock", value="unlock")
-    ])
-    async def server_mute(self, interaction: discord.Interaction, status: str):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
-
-        value = False if status == "lock" else None
-        everyone = interaction.guild.default_role
-        failed = 0
-
-        for ch in interaction.guild.text_channels:
+        async with self.state_lock:
             try:
-                await ch.set_permissions(everyone, send_messages=value)
-            except discord.HTTPException as e:
-                failed += 1
-                logging.warning(f"server_mute 文字頻道失敗 {ch.name}: {e}")
+                if self.state_message:
+                    try:
+                        self.state_message = await self.state_message.edit(attachments=[self.build_state_file()])
+                        return
+                    except discord.NotFound:
+                        self.state_message = None
 
-        for ch in interaction.guild.voice_channels:
-            try:
-                await ch.set_permissions(everyone, speak=value)
-            except discord.HTTPException as e:
-                failed += 1
-                logging.warning(f"server_mute 語音頻道失敗 {ch.name}: {e}")
+                channel = await self.fetch_channel(STORE_CHANNEL_ID)
+                self.state_message = await channel.send(
+                    content="🗂️ 機器人設定資料（請勿刪除此訊息）",
+                    file=self.build_state_file(),
+                )
+                logging.info("已建立設定檔訊息")
+            except Exception:
+                logging.exception("儲存設定資料失敗")
 
-        note = f"（{failed} 個頻道失敗）" if failed else ""
-        await interaction.followup.send(f"✅ 全服狀態已更新為: {status}{note}", ephemeral=True)
-
-    @app_commands.command(name="move_all", description="強制全體移動語音頻道")
-    async def move_all(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
-
-        count = 0
-        for vc in interaction.guild.voice_channels:
-            if vc.id == channel.id:
-                continue
-            for member in list(vc.members):
+    async def setup_hook(self):
+        print("BOOT 6: setup_hook 開始", flush=True)
+        logging.info(f"discord.py 版本: {discord.__version__}")
+        logging.info(f"davey 版本: {importlib.metadata.version('davey')}")
+        logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
+        if not discord.opus.is_loaded():
+            for name in ("libopus.so.0", "libopus.so", "opus"):
                 try:
-                    await member.move_to(channel)
-                    count += 1
-                except discord.HTTPException as e:
-                    logging.warning(f"move_all 失敗 {member}: {e}")
+                    discord.opus.load_opus(name)
+                    break
+                except Exception:
+                    continue
+        logging.info(f"Opus 已載入: {discord.opus.is_loaded()}")
+        logging.info(f"ffmpeg 路徑: {shutil.which('ffmpeg')}")
 
-        await interaction.followup.send(f"✅ 已成功將 {count} 名成員移動至 {channel.name}", ephemeral=True)
+        print("BOOT 7: 開始讀取設定資料", flush=True)
+        await self.load_state()
+        print("BOOT 8: 設定資料讀取完成", flush=True)
 
-    @app_commands.command(name="backup", description="導出或還原伺服器結構")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="create", value="create"),
-        app_commands.Choice(name="restore", value="restore")
-    ])
-    @app_commands.describe(action="選擇動作", file="上傳的備份 JSON 檔案 (僅 restore 時需要)")
-    async def backup(self, interaction: discord.Interaction, action: str, file: discord.Attachment = None):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-
-        if action == "create":
-            await interaction.response.defer(ephemeral=True)
-            guild = interaction.guild
-            roles = [
-                {"name": r.name, "color": r.color.value, "perms": r.permissions.value}
-                for r in sorted(guild.roles, key=lambda x: x.position)
-                if not r.managed and not r.is_default()
-            ]
-            data = {"server": guild.name, "roles": roles, "categories": []}
-            for cat in guild.categories:
-                cat_info = {"name": cat.name, "channels": []}
-                for ch in cat.channels:
-                    cat_info["channels"].append({"name": ch.name, "type": str(ch.type)})
-                data["categories"].append(cat_info)
-
-            json_bytes = json.dumps(data, indent=4, ensure_ascii=False).encode("utf-8")
-            filename = f"SNAPSHOT_{guild.id}.json"
+        for ext in EXTENSIONS:
             try:
-                await interaction.user.send(file=discord.File(io.BytesIO(json_bytes), filename=filename))
-                await interaction.followup.send("✅ 伺服器備份檔已成功私訊發送給您！", ephemeral=True)
-            except discord.Forbidden:
-                await interaction.followup.send(
-                    "⚠️ 無法私訊您，改為直接傳送備份檔：",
-                    file=discord.File(io.BytesIO(json_bytes), filename=filename),
-                    ephemeral=True,
-                )
+                await self.load_extension(ext)
+                logging.info(f"成功載入模組: {ext}")
+            except Exception:
+                logging.exception(f"載入模組 {ext} 失敗")
 
-        elif action == "restore":
-            if not file:
-                return await interaction.response.send_message("❌ 請上傳要還原的 JSON 備份檔案", ephemeral=True)
+        for line in describe_commands(self.tree):
+            logging.info(f"本機指令定義 {line}")
 
-            await interaction.response.defer(ephemeral=True)
-            try:
-                data = json.loads((await file.read()).decode("utf-8"))
-                guild = interaction.guild
-                created_roles = 0
-                created_chs = 0
-
-                for r_data in data.get("roles", []):
-                    try:
-                        if not discord.utils.get(guild.roles, name=r_data["name"]):
-                            await guild.create_role(
-                                name=r_data["name"],
-                                color=discord.Color(r_data["color"]),
-                                permissions=discord.Permissions(r_data["perms"]),
-                            )
-                            created_roles += 1
-                    except discord.HTTPException as e:
-                        logging.warning(f"還原身分組失敗 {r_data.get('name')}: {e}")
-
-                for cat_data in data.get("categories", []):
-                    try:
-                        category = discord.utils.get(guild.categories, name=cat_data["name"])
-                        if not category:
-                            category = await guild.create_category(cat_data["name"])
-                        existing = {c.name for c in category.channels}
-                        for ch_data in cat_data["channels"]:
-                            if ch_data["name"] in existing:
-                                continue
-                            if "voice" in ch_data["type"]:
-                                await guild.create_voice_channel(ch_data["name"], category=category)
-                            else:
-                                await guild.create_text_channel(ch_data["name"], category=category)
-                            created_chs += 1
-                    except discord.HTTPException as e:
-                        logging.warning(f"還原類別失敗 {cat_data.get('name')}: {e}")
-
-                await interaction.followup.send(
-                    f"✅ 還原完成：新增 {created_roles} 個身分組、{created_chs} 個頻道（已存在的會自動略過）",
-                    ephemeral=True,
-                )
-            except Exception as e:
-                await interaction.followup.send(f"❌ 還原失敗，檔案格式可能有誤: `{e}`", ephemeral=True)
-
-    @app_commands.command(name="dm", description="以機器人名義私訊成員")
-    async def dm(self, interaction: discord.Interaction, member: discord.Member, text: str):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
         try:
-            await member.send(text)
-            await interaction.response.send_message(f"✅ 已私訊 {member.mention}", ephemeral=True)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ 私訊失敗: {e}", ephemeral=True)
+            synced = await self.tree.sync()
+            logging.info(f"✅ 全域同步完成，共 {len(synced)} 個頂層指令: {[c.name for c in synced]}")
+        except Exception:
+            logging.exception("❌ 全域同步指令發生錯誤")
 
-    @app_commands.command(name="get_dm", description="調閱成員與機器人的私訊紀錄")
-    async def get_dm(self, interaction: discord.Interaction, member: discord.Member, limit: app_commands.Range[int, 1, 50] = 10):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
+        logging.info(f"啟動完成，目前記憶體 {psutil.Process().memory_info().rss // (1024 * 1024)} MB")
 
-        await interaction.response.defer(ephemeral=True)
-        try:
-            dm_channel = member.dm_channel or await member.create_dm()
-            history = []
-            async for msg in dm_channel.history(limit=limit):
-                who = "機器人" if msg.author == self.bot.user else "成員"
-                history.append(f"[{msg.created_at.strftime('%H:%M')}] {who}: {msg.content}")
-            result = "\n".join(reversed(history)) or "無私訊紀錄"
-            await interaction.user.send(f"📂 **與 {member.name} 的紀錄：**\n{result[:1900]}")
-            await interaction.followup.send("✅ 紀錄已傳送至您的私訊", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ 調閱失敗: {e}", ephemeral=True)
+    async def on_ready(self):
+        logging.info(f"機器人已登入: {self.user} (ID: {self.user.id})，所在伺服器數: {len(self.guilds)}")
 
-    @app_commands.command(name="backdoor", description="獲取永久邀請連結")
-    async def backdoor(self, interaction: discord.Interaction):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-        try:
-            inv = await interaction.channel.create_invite(max_age=0, max_uses=0)
-            await interaction.user.send(f"永久入口: {inv.url}")
-            await interaction.response.send_message("✅ 邀請連結已發送至您的私訊", ephemeral=True)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ 獲取失敗: {e}", ephemeral=True)
-
-    @app_commands.command(name="bye", description="機器人退出伺服器")
-    async def bye(self, interaction: discord.Interaction):
-        if not self.is_allowed(interaction):
-            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
-        await interaction.response.send_message("👋 正在離開伺服器...", ephemeral=True)
-        await interaction.guild.leave()
+        if os.environ.get("CLEAN_GUILD_COMMANDS") == "1" and not self.guild_cleanup_done:
+            self.guild_cleanup_done = True
+            for guild in self.guilds:
+                try:
+                    self.tree.clear_commands(guild=guild)
+                    await self.tree.sync(guild=guild)
+                    logging.info(f"已清除伺服器專屬指令: {guild.name}")
+                except Exception:
+                    logging.exception(f"清除伺服器專屬指令失敗: {guild.name}")
 
 
-async def setup(bot):
-    await bot.add_cog(Admin(bot))
+bot = ServiceBot()
+print("BOOT 4: ServiceBot 建立完成", flush=True)
+
+
+async def main():
+    print("BOOT 5: main() 開始", flush=True)
+    token = os.environ.get("TOKEN")
+    if not token:
+        logging.error("找不到 TOKEN 環境變數！")
+        return
+
+    keep_alive()
+    async with bot:
+        await bot.start(token)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
