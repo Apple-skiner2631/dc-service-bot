@@ -61,6 +61,7 @@ class ServiceBot(commands.Bot):
         logging.info(f"discord.py 版本: {discord.__version__}")
         logging.info(f"davey 已安裝: {importlib.util.find_spec('davey') is not None}")
         logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
+        logging.info(f"davey 版本: {importlib.metadata.version('davey')}")
         if not discord.opus.is_loaded():
             for name in ("libopus.so.0", "libopus.so", "opus"):
                 try:
