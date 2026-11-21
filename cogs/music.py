@@ -487,7 +487,7 @@ class Music(commands.Cog):
         seconds = 3
         frames = bytearray()
         for i in range(rate * seconds):
-            value = int(0.3 * 32767 * math.sin(2 * math.pi * 440 * i / rate))
+            value = int(3.0 * 32767 * math.sin(2 * math.pi * 440 * i / rate))
             frames += struct.pack("<hh", value, value)
 
         vc.play(
