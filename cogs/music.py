@@ -495,6 +495,18 @@ class Music(commands.Cog):
             after=lambda err: logging.info(f"測試音播放結束 錯誤={err}"),
         )
         await interaction.followup.send("🔔 正在播放 3 秒測試音（440Hz）", ephemeral=True)
+        await asyncio.sleep(1.5)
+dave_info = {}
+for name in dir(vc):
+    if "dave" in name.lower() and not name.startswith("__"):
+        try:
+            dave_info[name] = repr(getattr(vc, name))[:80]
+        except Exception as e:
+            dave_info[name] = f"讀取失敗: {e}"
+logging.info(
+    f"voicetest 狀態: 已連線={vc.is_connected()} 播放中={vc.is_playing()} "
+    f"延遲={vc.latency} 平均延遲={vc.average_latency} DAVE屬性={dave_info}"
+)
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
