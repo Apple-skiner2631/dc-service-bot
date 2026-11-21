@@ -60,8 +60,8 @@ class ServiceBot(commands.Bot):
     async def setup_hook(self):
         logging.info(f"discord.py 版本: {discord.__version__}")
         logging.info(f"davey 已安裝: {importlib.util.find_spec('davey') is not None}")
-        logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
         logging.info(f"davey 版本: {importlib.metadata.version('davey')}")
+        logging.info(f"PyNaCl 已安裝: {importlib.util.find_spec('nacl') is not None}")
         if not discord.opus.is_loaded():
             for name in ("libopus.so.0", "libopus.so", "opus"):
                 try:
@@ -71,14 +71,7 @@ class ServiceBot(commands.Bot):
                     continue
         logging.info(f"Opus 已載入: {discord.opus.is_loaded()}")
         logging.info(f"ffmpeg 路徑: {shutil.which('ffmpeg')}")
-        logging.info(f"runtime_bin/ffmpeg 存在: {os.path.exists(os.path.join(os.getcwd(), 'runtime_bin', 'ffmpeg'))}")
 
-        for ext in EXTENSIONS:
-            try:
-                await self.load_extension(ext)
-                logging.info(f"成功載入模組: {ext}")
-            except Exception:
-                logging.exception(f"載入模組 {ext} 失敗")
         for ext in EXTENSIONS:
             try:
                 await self.load_extension(ext)
