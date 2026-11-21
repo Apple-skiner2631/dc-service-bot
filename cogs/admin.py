@@ -1,7 +1,9 @@
+import asyncio
 import datetime
 import io
 import json
 import logging
+import os
 from typing import Union
 
 import discord
@@ -60,6 +62,7 @@ class Admin(commands.Cog):
                 "`/get_dm` - 調閱成員私訊紀錄\n"
                 "`/backdoor` - 獲取永久邀請連結\n"
                 "`/bye` - 機器人退出伺服器\n"
+                "`/restart` - 重新啟動機器人 (僅限開發者)\n"
             ),
             inline=False
         )
@@ -577,6 +580,19 @@ class Admin(commands.Cog):
             return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
         await interaction.response.send_message("👋 正在離開伺服器...", ephemeral=True)
         await interaction.guild.leave()
+
+    @app_commands.command(name="restart", description="重新啟動機器人（僅限開發者）")
+    async def restart(self, interaction: discord.Interaction):
+        if interaction.user.id not in self.bot.allowed_ids:
+            return await interaction.response.send_message("❌ 權限不足：僅限開發者使用。", ephemeral=True)
+
+        await interaction.response.send_message("🔄 正在重新啟動，約需 30 到 90 秒，期間指令暫時無法使用...", ephemeral=True)
+        logging.info(f"收到重新啟動指令，來自 {interaction.user} ({interaction.user.id})")
+
+        await self.bot.save_state()
+        await asyncio.sleep(1)
+        await self.bot.close()
+        os._exit(1)
 
 
 async def setup(bot):
