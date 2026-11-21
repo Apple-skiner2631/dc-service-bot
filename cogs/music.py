@@ -11,6 +11,9 @@ from discord.ext import commands
 import edge_tts
 import requests
 import yt_dlp
+import math
+import struct
+import time
 
 BILIBILI_COOKIE = os.getenv("BILI_COOKIE", "").replace("\r", "").replace("\n", "").replace('"', "")
 
@@ -460,6 +463,38 @@ class Music(commands.Cog):
             logging.exception("TTS 播放發生例外狀況")
             await interaction.followup.send(f"❌ TTS 播放失敗: `{str(e)[:100]}`", ephemeral=True)
 
+
+    @app_commands.command(name="voicetest", description="播放 3 秒測試音（不經過 ffmpeg）")
+    async def voicetest(self, interaction: discord.Interaction):
+        if not self.is_allowed(interaction):
+            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+
+        user_vc = interaction.user.voice.channel if interaction.user.voice else None
+        if not user_vc:
+            return await interaction.followup.send("❌ 你必須先加入一個語音頻道！", ephemeral=True)
+
+        try:
+            vc = await self._ensure_connected(interaction.guild, user_vc)
+        except Exception as e:
+            return await interaction.followup.send(f"❌ 無法進入頻道: `{e}`", ephemeral=True)
+
+        await self._stop_playback(interaction.guild)
+        await asyncio.sleep(0.3)
+
+        rate = 48000
+        seconds = 3
+        frames = bytearray()
+        for i in range(rate * seconds):
+            value = int(0.3 * 32767 * math.sin(2 * math.pi * 440 * i / rate))
+            frames += struct.pack("<hh", value, value)
+
+        vc.play(
+            discord.PCMAudio(io.BytesIO(bytes(frames))),
+            after=lambda err: logging.info(f"測試音播放結束 錯誤={err}"),
+        )
+        await interaction.followup.send("🔔 正在播放 3 秒測試音（440Hz）", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
