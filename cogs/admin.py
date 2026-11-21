@@ -41,7 +41,7 @@ class Admin(commands.Cog):
         embed.add_field(
             name="🛡️ 基礎管理與設定",
             value=(
-                "`/set` - 設定通告頻道、陷阱頻道、語音房、白名單與自動封鎖\n"
+                "`/set` - 設定通告、陷阱、語音房、票務系統、白名單與自動封鎖\n"
                 "`/punish` - 懲處成員 (member / action / reason / time)\n"
                 "`/role` - 身分組綜合管理 (給予/移除/清除全部)\n"
                 "`/del_msg` - 批次清理訊息 (value / member / keyword / time)\n"
@@ -143,6 +143,90 @@ class Admin(commands.Cog):
                 op_list.remove(member.id)
             await self.bot.save_state()
             await interaction.response.send_message(f"✅ 已剝奪 {member.mention} 的臨時操作權限", ephemeral=True)
+
+    @set_group.command(name="ticket", description="設定票務系統（開票訊息頻道、管理身分組、工單分類）")
+    @app_commands.choices(type=[
+        app_commands.Choice(name="開票訊息發送頻道 (panel)", value="panel"),
+        app_commands.Choice(name="新增管理身分組 (staff_add)", value="staff_add"),
+        app_commands.Choice(name="移除管理身分組 (staff_remove)", value="staff_remove"),
+        app_commands.Choice(name="待處理分類 (pending)", value="pending"),
+        app_commands.Choice(name="已處理分類 (resolved)", value="resolved"),
+        app_commands.Choice(name="檢視目前設定 (info)", value="info"),
+    ])
+    @app_commands.describe(
+        type="要設定的項目",
+        channel="panel 請選文字頻道；pending / resolved 請選分類",
+        role="staff_add / staff_remove 時要選擇的身分組",
+    )
+    async def set_ticket(
+        self,
+        interaction: discord.Interaction,
+        type: str,
+        channel: Union[discord.TextChannel, discord.CategoryChannel] = None,
+        role: discord.Role = None,
+    ):
+        if not self.is_allowed(interaction):
+            return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        config = self.bot.config_db.setdefault(interaction.guild_id, {})
+
+        if type == "info":
+            panel_id = config.get("ticket_panel")
+            pending_id = config.get("ticket_pending")
+            resolved_id = config.get("ticket_resolved")
+            staff_ids = config.get("ticket_staff", [])
+            staff_text = "、".join(f"<@&{rid}>" for rid in staff_ids) if staff_ids else "未設定"
+            text = (
+                "🎫 **票務系統目前設定**\n"
+                f"• 開票訊息頻道：{f'<#{panel_id}>' if panel_id else '未設定'}\n"
+                f"• 待處理分類：{f'<#{pending_id}>' if pending_id else '未設定'}\n"
+                f"• 已處理分類：{f'<#{resolved_id}>' if resolved_id else '未設定'}\n"
+                f"• 管理身分組：{staff_text}"
+            )
+            return await interaction.followup.send(text, ephemeral=True)
+
+        if type == "panel":
+            if not isinstance(channel, discord.TextChannel):
+                return await interaction.followup.send("❌ panel 必須選擇「文字頻道」。", ephemeral=True)
+            config["ticket_panel"] = channel.id
+            await self.bot.save_state()
+
+            cog = self.bot.get_cog("TicketCog")
+            if not cog:
+                return await interaction.followup.send(f"✅ 已儲存開票訊息頻道：{channel.mention}，但票務模組未載入，請重新啟動機器人。", ephemeral=True)
+            try:
+                await cog.send_panel(channel, force=True)
+            except discord.HTTPException as e:
+                return await interaction.followup.send(f"⚠️ 已儲存設定，但發送開票訊息失敗（請確認機器人有該頻道的發送訊息與讀取歷史權限）: {e}", ephemeral=True)
+
+            missing = [name for key, name in (("ticket_pending", "待處理分類"), ("ticket_resolved", "已處理分類")) if not config.get(key)]
+            note = f"\n⚠️ 尚未設定：{'、'.join(missing)}，使用者開票前請先設定。" if missing else ""
+            return await interaction.followup.send(f"✅ 已將開票訊息發送到 {channel.mention}{note}", ephemeral=True)
+
+        if type in ("pending", "resolved"):
+            if not isinstance(channel, discord.CategoryChannel):
+                return await interaction.followup.send(f"❌ {type} 必須選擇「分類」。", ephemeral=True)
+            config[f"ticket_{type}"] = channel.id
+            await self.bot.save_state()
+            label = "待處理" if type == "pending" else "已處理"
+            return await interaction.followup.send(f"✅ 已將{label}分類設定為：{channel.mention}", ephemeral=True)
+
+        if type in ("staff_add", "staff_remove"):
+            if not role:
+                return await interaction.followup.send("❌ 請指定身分組。", ephemeral=True)
+            staff_list = config.setdefault("ticket_staff", [])
+            if type == "staff_add":
+                if role.id not in staff_list:
+                    staff_list.append(role.id)
+                await self.bot.save_state()
+                return await interaction.followup.send(f"✅ 已將 {role.mention} 加入票務管理身分組", ephemeral=True)
+            if role.id in staff_list:
+                staff_list.remove(role.id)
+            await self.bot.save_state()
+            return await interaction.followup.send(f"✅ 已將 {role.mention} 移出票務管理身分組", ephemeral=True)
 
     @app_commands.command(name="punish", description="懲處成員")
     @app_commands.choices(action=[
