@@ -8,14 +8,27 @@ from discord import ui
 from discord.ext import commands
 
 
-TICKET_CHANNEL_ID = 1466986768652963983
-PENDING_CAT_ID = 1490338802261299312
-RESOLVED_CAT_ID = 1490339576689201212
-STAFF_ROLE_IDS = [1459696673239470338, 1459700251295223994]
-
 TAIPEI_TZ = timezone(timedelta(hours=8))
 TICKET_PREFIXES = ("ticket-", "report-", "ask-", "suggest-")
 OWNER_TOPIC_PREFIX = "ticket_owner:"
+PANEL_TITLE = "📨 票務系統 | Ticket System"
+NOT_CONFIGURED_TEXT = "❌ 票務系統尚未完成設定，請聯絡管理人員（需要設定待處理分類與已處理分類）。"
+
+
+def get_config(bot, guild_id: int) -> dict:
+    return getattr(bot, "config_db", {}).get(guild_id, {})
+
+
+def get_category(bot, guild: discord.Guild, key: str):
+    category_id = get_config(bot, guild.id).get(key)
+    if not category_id:
+        return None
+    channel = guild.get_channel(category_id)
+    return channel if isinstance(channel, discord.CategoryChannel) else None
+
+
+def get_staff_role_ids(bot, guild_id: int) -> list:
+    return get_config(bot, guild_id).get("ticket_staff", [])
 
 
 def is_ticket_channel(channel) -> bool:
@@ -32,48 +45,48 @@ def get_opener_id(channel):
     return None
 
 
-def is_staff(member: discord.Member, allowed_ids) -> bool:
-    if member.id in allowed_ids:
+def is_staff(member: discord.Member, bot) -> bool:
+    if member.id in bot.allowed_ids:
         return True
     if member.guild_permissions.manage_channels:
         return True
-    return any(role.id in STAFF_ROLE_IDS for role in member.roles)
+    staff_ids = set(get_staff_role_ids(bot, member.guild.id))
+    return any(role.id in staff_ids for role in member.roles)
 
 
 def can_manage(interaction: discord.Interaction) -> bool:
-    return is_staff(interaction.user, interaction.client.allowed_ids)
+    return is_staff(interaction.user, interaction.client)
 
 
 def is_opener_or_staff(interaction: discord.Interaction) -> bool:
     return can_manage(interaction) or get_opener_id(interaction.channel) == interaction.user.id
 
 
-def build_overwrites(guild: discord.Guild, user: discord.Member) -> dict:
+def build_overwrites(bot, guild: discord.Guild, user: discord.Member) -> dict:
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
     }
-    for role_id in STAFF_ROLE_IDS:
+    for role_id in get_staff_role_ids(bot, guild.id):
         staff_role = guild.get_role(role_id)
         if staff_role:
             overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
     return overwrites
 
 
-async def create_ticket_channel(guild: discord.Guild, user: discord.Member, channel_name: str) -> discord.TextChannel:
-    category = guild.get_channel(PENDING_CAT_ID)
+async def create_ticket_channel(bot, guild: discord.Guild, user: discord.Member, channel_name: str, category) -> discord.TextChannel:
     return await guild.create_text_channel(
         name=channel_name,
         category=category,
-        overwrites=build_overwrites(guild, user),
+        overwrites=build_overwrites(bot, guild, user),
         topic=f"{OWNER_TOPIC_PREFIX}{user.id}",
     )
 
 
-def find_existing_ticket(guild: discord.Guild, channel_name: str):
-    for cat_id in (PENDING_CAT_ID, RESOLVED_CAT_ID):
-        category = guild.get_channel(cat_id)
+def find_existing_ticket(bot, guild: discord.Guild, channel_name: str):
+    for key in ("ticket_pending", "ticket_resolved"):
+        category = get_category(bot, guild, key)
         if category:
             for ch in category.text_channels:
                 if ch.name.lower() == channel_name:
@@ -97,15 +110,20 @@ class BaseTicketModal(ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
+        bot = interaction.client
+
+        pending = get_category(bot, guild, "ticket_pending")
+        if not pending:
+            return await interaction.followup.send(NOT_CONFIGURED_TEXT, ephemeral=True)
 
         channel_name = f"{self.ticket_type}-{interaction.user.name.lower()}"
 
-        existing = find_existing_ticket(guild, channel_name)
+        existing = find_existing_ticket(bot, guild, channel_name)
         if existing:
             return await interaction.followup.send(f"**⚠️ 您已經建立過此類別的工單 ({existing.mention})，無法重複建立！**", ephemeral=True)
 
         try:
-            ticket_channel = await create_ticket_channel(guild, interaction.user, channel_name)
+            ticket_channel = await create_ticket_channel(bot, guild, interaction.user, channel_name, pending)
         except discord.HTTPException as e:
             logging.warning(f"建立工單頻道失敗: {e}")
             return await interaction.followup.send("❌ 建立工單失敗，請聯絡管理人員（可能是分類頻道已滿或機器人權限不足）。", ephemeral=True)
@@ -153,8 +171,13 @@ class TicketSelect(ui.Select):
             await interaction.response.send_message("請選擇有效的服務類別！", ephemeral=True)
             return
 
+        bot = interaction.client
+        if not get_category(bot, interaction.guild, "ticket_pending"):
+            await interaction.response.send_message(NOT_CONFIGURED_TEXT, ephemeral=True)
+            return
+
         target_channel_name = f"{prefix}-{interaction.user.name.lower()}"
-        existing = find_existing_ticket(interaction.guild, target_channel_name)
+        existing = find_existing_ticket(bot, interaction.guild, target_channel_name)
         if existing:
             await interaction.response.send_message(f"**⚠️ 您已經建立過「{selected_type}」類別的工單 ({existing.mention})，無法重複建立！**", ephemeral=True)
             return
@@ -189,10 +212,13 @@ class TicketControlView(ui.View):
         if not is_opener_or_staff(interaction):
             return await interaction.response.send_message("❌ 只有開單者或管理人員才能關閉工單。", ephemeral=True)
 
+        resolved = get_category(interaction.client, interaction.guild, "ticket_resolved")
+        if not resolved:
+            return await interaction.response.send_message(NOT_CONFIGURED_TEXT, ephemeral=True)
+
         await interaction.response.defer()
-        category = interaction.guild.get_channel(RESOLVED_CAT_ID)
         try:
-            await interaction.channel.edit(category=category)
+            await interaction.channel.edit(category=resolved)
         except discord.HTTPException as e:
             return await interaction.followup.send(f"❌ 移動工單失敗: {e}", ephemeral=True)
 
@@ -209,10 +235,13 @@ class TicketPostCloseView(ui.View):
         if not can_manage(interaction):
             return await interaction.response.send_message("❌ 只有管理人員才能復原工單。", ephemeral=True)
 
+        pending = get_category(interaction.client, interaction.guild, "ticket_pending")
+        if not pending:
+            return await interaction.response.send_message(NOT_CONFIGURED_TEXT, ephemeral=True)
+
         await interaction.response.defer()
-        category = interaction.guild.get_channel(PENDING_CAT_ID)
         try:
-            await interaction.channel.edit(category=category)
+            await interaction.channel.edit(category=pending)
         except discord.HTTPException as e:
             return await interaction.followup.send(f"❌ 復原失敗: {e}", ephemeral=True)
         await interaction.followup.send("**🔄 工單已成功復原並移至「待處理」區域！**")
@@ -253,31 +282,33 @@ class TicketPostCloseView(ui.View):
 class TicketCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.panel_sent = False
+        self.panel_checked = False
 
     async def cog_load(self):
         self.bot.add_view(TicketLaunchView())
         self.bot.add_view(TicketControlView())
         self.bot.add_view(TicketPostCloseView())
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        if self.panel_sent:
-            return
-        self.panel_sent = True
+    async def find_panel_messages(self, channel: discord.TextChannel) -> list:
+        found = []
+        async for message in channel.history(limit=50):
+            if message.author.id == self.bot.user.id and any(e.title == PANEL_TITLE for e in message.embeds):
+                found.append(message)
+        return found
 
-        channel = self.bot.get_channel(TICKET_CHANNEL_ID)
-        if not channel:
-            logging.warning("找不到工單面板頻道，請確認 TICKET_CHANNEL_ID")
-            return
+    async def send_panel(self, channel: discord.TextChannel, force: bool = False):
+        existing = await self.find_panel_messages(channel)
+        if existing and not force:
+            return existing[0]
 
-        try:
-            await channel.purge(limit=50, check=lambda m: m.author.id == self.bot.user.id)
-        except discord.HTTPException as e:
-            logging.warning(f"清理舊工單面板失敗: {e}")
+        for message in existing:
+            try:
+                await message.delete()
+            except discord.HTTPException as e:
+                logging.warning(f"刪除舊工單面板失敗: {e}")
 
         embed = discord.Embed(
-            title="📨 票務系統 | Ticket System",
+            title=PANEL_TITLE,
             description="""歡迎使用支援服務，請點擊下方選單選擇您要開啟的服務類別。
 
 **⚠️ 開票須知：**
@@ -289,19 +320,42 @@ class TicketCog(commands.Cog):
 *管理團隊將會盡快為您處理，感謝您的配合！*""",
             color=discord.Color.green()
         )
-        await channel.send(embed=embed, view=TicketLaunchView())
+        return await channel.send(embed=embed, view=TicketLaunchView())
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if self.panel_checked:
+            return
+        self.panel_checked = True
+
+        for guild_id, config in list(getattr(self.bot, "config_db", {}).items()):
+            channel_id = config.get("ticket_panel")
+            if not channel_id:
+                continue
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logging.warning(f"找不到工單面板頻道 {channel_id}（伺服器 {guild_id}），請重新執行 /set ticket")
+                continue
+            try:
+                await self.send_panel(channel)
+            except discord.HTTPException as e:
+                logging.warning(f"確認工單面板失敗（伺服器 {guild_id}）: {e}")
 
     @commands.command(name="new")
     @commands.guild_only()
     async def cmd_new(self, ctx: commands.Context):
+        pending = get_category(self.bot, ctx.guild, "ticket_pending")
+        if not pending:
+            return await ctx.send(NOT_CONFIGURED_TEXT, delete_after=10)
+
         channel_name = f"ticket-{ctx.author.name.lower()}"
 
-        existing = find_existing_ticket(ctx.guild, channel_name)
+        existing = find_existing_ticket(self.bot, ctx.guild, channel_name)
         if existing:
             return await ctx.send(f"**⚠️ 您已經有一張工單：{existing.mention}**", delete_after=10)
 
         try:
-            ticket_channel = await create_ticket_channel(ctx.guild, ctx.author, channel_name)
+            ticket_channel = await create_ticket_channel(self.bot, ctx.guild, ctx.author, channel_name, pending)
         except discord.HTTPException as e:
             logging.warning(f"建立工單頻道失敗: {e}")
             return await ctx.send("❌ 建立工單失敗，請聯絡管理人員。", delete_after=10)
@@ -317,7 +371,7 @@ class TicketCog(commands.Cog):
     @commands.command(name="user")
     @commands.guild_only()
     async def cmd_user(self, ctx: commands.Context, member: discord.Member):
-        if not is_staff(ctx.author, self.bot.allowed_ids):
+        if not is_staff(ctx.author, self.bot):
             return await ctx.send("**❌ 只有管理人員可以使用此指令。**", delete_after=5)
         if not is_ticket_channel(ctx.channel):
             return await ctx.send("**⚠ 此指令只能在工單頻道內使用!**", delete_after=5)
@@ -331,7 +385,7 @@ class TicketCog(commands.Cog):
         if not is_ticket_channel(ctx.channel):
             return await ctx.send("⚠ 此指令只能在工單頻道內使用。", delete_after=5)
 
-        allowed = is_staff(ctx.author, self.bot.allowed_ids) or get_opener_id(ctx.channel) == ctx.author.id
+        allowed = is_staff(ctx.author, self.bot) or get_opener_id(ctx.channel) == ctx.author.id
         if not allowed:
             return await ctx.send("❌ 只有開單者或管理人員才能關閉工單。", delete_after=5)
 
