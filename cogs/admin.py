@@ -84,6 +84,7 @@ class Admin(commands.Cog):
             return await interaction.response.send_message(f"❌ {type} 必須選擇「文字頻道」。", ephemeral=True)
 
         self.bot.config_db.setdefault(interaction.guild_id, {})[type] = channel.id
+        await self.bot.save_state()
         await interaction.response.send_message(f"✅ 已成功將 {type} 頻道設定為：{channel.mention}", ephemeral=True)
 
     @set_group.command(name="whitelist", description="管理免疫處罰與陷阱的白名單成員")
@@ -100,10 +101,12 @@ class Admin(commands.Cog):
         if action == "add":
             if member.id not in whitelist:
                 whitelist.append(member.id)
+            await self.bot.save_state()
             await interaction.response.send_message(f"✅ 已將 {member.mention} 加入白名單", ephemeral=True)
         elif action == "remove":
             if member.id in whitelist:
                 whitelist.remove(member.id)
+            await self.bot.save_state()
             await interaction.response.send_message(f"✅ 已將 {member.mention} 移除白名單", ephemeral=True)
 
     @set_group.command(name="autoban", description="開關陷阱頻道自動封鎖功能")
@@ -116,6 +119,7 @@ class Admin(commands.Cog):
             return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
 
         self.bot.autoban_db[interaction.guild_id] = (status == "on")
+        await self.bot.save_state()
         await interaction.response.send_message(f"✅ 自動封鎖功能已切換為: {status}", ephemeral=True)
 
     @set_group.command(name="op_access", description="授權或剝奪特定成員的臨時操作權限")
@@ -132,10 +136,12 @@ class Admin(commands.Cog):
         if action == "add":
             if member.id not in op_list:
                 op_list.append(member.id)
+            await self.bot.save_state()
             await interaction.response.send_message(f"✅ 已授與 {member.mention} 臨時操作權限", ephemeral=True)
         elif action == "remove":
             if member.id in op_list:
                 op_list.remove(member.id)
+            await self.bot.save_state()
             await interaction.response.send_message(f"✅ 已剝奪 {member.mention} 的臨時操作權限", ephemeral=True)
 
     @app_commands.command(name="punish", description="懲處成員")
