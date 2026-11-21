@@ -8,6 +8,7 @@ from flask import Flask, render_template
 import discord
 from discord import app_commands
 from discord.ext import commands
+import importlib.metadata
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
