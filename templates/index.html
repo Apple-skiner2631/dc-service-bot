@@ -1,405 +1,276 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server.cat Bot Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        * {
-            font-family: 'Inter', sans-serif;
-        }
-
-        body {
-            background-color: #0f172a;
-            color: #f8fafc;
-            overflow-x: hidden;
-        }
-
-        .mouse-glow {
-            pointer-events: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 550px;
-            height: 550px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(56, 189, 248, 0.14) 0%, rgba(99, 102, 241, 0.04) 45%, rgba(15, 23, 42, 0) 70%);
-            transform: translate(-50%, -50%);
-            z-index: 1;
-            will-change: left, top;
-        }
-
-        .glass-card {
-            background: rgba(30, 41, 59, 0.65);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .glass-card:hover {
-            border-color: rgba(56, 189, 248, 0.25);
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.08);
-        }
-
-        .tab-btn.active {
-            background-color: rgba(56, 189, 248, 0.15);
-            color: #38bdf8;
-            border-color: rgba(56, 189, 248, 0.3);
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>機器人控制台</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#272b35;--text:#e6e8ee;--mute:#8b92a3;--accent:#5865f2;--ok:#3ba55d;--bad:#ed4245}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.5}
+.hidden{display:none!important}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.center{max-width:360px;margin:15vh auto 0}
+h1{font-size:20px;margin:0}h2{font-size:16px;margin:28px 0 12px}
+input,select,textarea,button{font:inherit;color:var(--text);background:#10131a;border:1px solid var(--line);border-radius:8px;padding:9px 12px;width:100%}
+textarea{min-height:90px;resize:vertical}
+button{width:auto;background:var(--accent);border:0;cursor:pointer;font-weight:600}
+button:hover{filter:brightness(1.1)}button:disabled{opacity:.5;cursor:default}
+button.ghost{background:transparent;border:1px solid var(--line)}
+button.danger{background:var(--bad)}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--mute)}
+.chip b{color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.row{display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:3px 0;color:var(--mute)}
+.row span:last-child{color:var(--text);text-align:right;word-break:break-all}
+.gname{font-weight:700;margin-bottom:4px}
+.form{display:grid;gap:10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.switch{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px}
+.switch input{width:auto}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000;border:1px solid var(--line);padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:1}
+.err{color:var(--bad);font-size:14px;min-height:20px;margin-top:8px}
+</style>
 </head>
-<body class="min-h-screen flex flex-col justify-between selection:bg-sky-500 selection:text-white">
+<body>
 
-    <div class="mouse-glow" id="mouseGlow"></div>
+<div id="login" class="card center hidden">
+  <h1>🤖 機器人控制台</h1>
+  <p id="loginMsg" style="color:var(--mute);font-size:14px">請輸入控制台密碼</p>
+  <div class="form">
+    <input id="pw" type="password" placeholder="密碼" autocomplete="current-password">
+    <button id="loginBtn">登入</button>
+  </div>
+  <div id="loginErr" class="err"></div>
+</div>
 
-    <header class="relative z-10 w-full border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md px-6 py-4">
-        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-sky-500/20">
-                    🐱
-                </div>
-                <div>
-                    <h1 class="font-bold text-lg text-white tracking-wide">Server .cat Dashboard</h1>
-                    <p class="text-xs text-sky-400 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Discord Bot v2.5 Online
-                    </p>
-                </div>
-            </div>
+<div id="app" class="wrap hidden">
+  <div class="bar">
+    <h1>🤖 <span id="botName">機器人</span></h1>
+    <div style="display:flex;gap:8px">
+      <button class="danger" id="restartBtn">重新啟動</button>
+      <button class="ghost" id="logoutBtn">登出</button>
+    </div>
+  </div>
+  <div class="chips">
+    <div class="chip">延遲 <b id="cLat">-</b></div>
+    <div class="chip">運行 <b id="cUp">-</b></div>
+    <div class="chip">記憶體 <b id="cMem">-</b></div>
+    <div class="chip">伺服器 <b id="cGuilds">-</b></div>
+  </div>
 
-            <div class="flex items-center gap-3 w-full md:w-auto">
-                <div class="relative w-full md:w-64">
-                    <i class="fa-solid fa-server absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                    <select id="serverSelect" class="w-full bg-slate-800/90 text-slate-200 text-sm font-medium border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:border-sky-500 transition-colors">
-                        <option value="guild1">Main Community Guild</option>
-                        <option value="guild2">Gaming Tavern</option>
-                        <option value="guild3">Dev Testing Grounds</option>
-                    </select>
-                    <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
-                </div>
-            </div>
-        </div>
-    </header>
+  <h2>伺服器</h2>
+  <div id="guilds" class="grid"></div>
 
-    <main class="relative z-10 max-w-7xl mx-auto w-full px-6 py-8 flex-grow space-y-8">
-        
-        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="glass-card p-5 rounded-2xl transition-all duration-300">
-                <div class="flex items-center justify-between text-slate-400 mb-2">
-                    <span class="text-xs font-semibold uppercase tracking-wider">WebSocket Ping</span>
-                    <i class="fa-solid fa-bolt text-amber-400"></i>
-                </div>
-                <div class="text-2xl font-bold text-white" id="statPing">24 ms</div>
-                <div class="text-xs text-emerald-400 mt-1 flex items-center gap-1">
-                    <i class="fa-solid fa-circle-check"></i> 網路延遲極佳
-                </div>
-            </div>
+  <h2>以機器人身分發送訊息</h2>
+  <div class="card form">
+    <div class="two">
+      <select id="sendGuild"></select>
+      <select id="sendChannel"></select>
+    </div>
+    <textarea id="sendText" maxlength="2000" placeholder="輸入要發送的訊息（不會觸發 @ 提及）"></textarea>
+    <div><button id="sendBtn">發送</button></div>
+  </div>
+</div>
 
-            <div class="glass-card p-5 rounded-2xl transition-all duration-300">
-                <div class="flex items-center justify-between text-slate-400 mb-2">
-                    <span class="text-xs font-semibold uppercase tracking-wider">語音連線</span>
-                    <i class="fa-solid fa-headset text-sky-400"></i>
-                </div>
-                <div class="text-2xl font-bold text-white" id="statVoice">播放中</div>
-                <div class="text-xs text-slate-400 mt-1" id="statVoiceDetail">Bilibili HQ Stream</div>
-            </div>
+<div id="toast"></div>
 
-            <div class="glass-card p-5 rounded-2xl transition-all duration-300">
-                <div class="flex items-center justify-between text-slate-400 mb-2">
-                    <span class="text-xs font-semibold uppercase tracking-wider">伺服器成員</span>
-                    <i class="fa-solid fa-users text-indigo-400"></i>
-                </div>
-                <div class="text-2xl font-bold text-white" id="statUsers">1,420</div>
-                <div class="text-xs text-sky-400 mt-1" id="statWhitelist">白名單模式已啟用</div>
-            </div>
+<script>
+const $ = id => document.getElementById(id);
+let guildKey = "";
+let timer = null;
 
-            <div class="glass-card p-5 rounded-2xl transition-all duration-300">
-                <div class="flex items-center justify-between text-slate-400 mb-2">
-                    <span class="text-xs font-semibold uppercase tracking-wider">陷阱頻道監控</span>
-                    <i class="fa-solid fa-shield-halved text-rose-400"></i>
-                </div>
-                <div class="text-2xl font-bold text-white" id="statSecurity">Active</div>
-                <div class="text-xs text-emerald-400 mt-1" id="statTrapDetail">自動封鎖中</div>
-            </div>
-        </section>
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2500);
+}
 
-        <section class="glass-card p-6 rounded-2xl space-y-6">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                <div>
-                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                        <i class="fa-solid fa-server text-sky-400"></i>
-                        <span id="currentGuildTitle">Main Community Guild</span> 實時狀態
-                    </h2>
-                    <p class="text-xs text-slate-400 mt-0.5">針對當前選擇的 Discord 伺服器進行獨立設定與運作監控</p>
-                </div>
-                <div class="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
-                    <span>GUILD ID:</span>
-                    <span id="currentGuildId" class="text-sky-400 font-bold">89347102948172901</span>
-                </div>
-            </div>
+async function api(path, body) {
+  const options = { credentials: "same-origin" };
+  if (body !== undefined) {
+    options.method = "POST";
+    options.headers = { "Content-Type": "application/json" };
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, options);
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) showLogin();
+  if (!res.ok) throw new Error(data.error || "請求失敗");
+  return data;
+}
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between space-y-4">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                            <i class="fa-solid fa-music text-sky-400"></i> 目前音樂 / 音訊狀態
-                        </span>
-                        <span id="musicBadge" class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            PLAYING
-                        </span>
-                    </div>
+function showLogin(configured = true) {
+  clearInterval(timer);
+  $("app").classList.add("hidden");
+  $("login").classList.remove("hidden");
+  if (!configured) {
+    $("loginMsg").textContent = "尚未設定 DASHBOARD_PASSWORD，請先到 Render 的環境變數設定密碼。";
+    $("pw").disabled = true;
+    $("loginBtn").disabled = true;
+  }
+}
 
-                    <div>
-                        <div class="text-base font-semibold text-slate-100" id="currentTrackTitle">YOASOBI - IDOL (Bilibili HQ)</div>
-                        <div class="text-xs text-slate-400 mt-1 flex items-center gap-2" id="currentTrackChannel">
-                            <span><i class="fa-solid fa-volume-high text-sky-400"></i> 音樂大廳 #1</span>
-                            <span>•</span>
-                            <span>點播者: @DevUser</span>
-                        </div>
-                    </div>
+function showApp() {
+  $("login").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  refresh();
+  clearInterval(timer);
+  timer = setInterval(refresh, 10000);
+}
 
-                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                        <div id="trackProgress" class="bg-gradient-to-r from-sky-400 to-indigo-500 h-1.5 rounded-full" style="width: 65%;"></div>
-                    </div>
-                </div>
+function fmtUptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}天 ${h}時` : h ? `${h}時 ${m}分` : `${m}分`;
+}
 
-                <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                            <i class="fa-solid fa-user-shield text-rose-400"></i> 最近安全防護日誌
-                        </span>
-                        <span class="text-xs text-slate-500">Auto-Ban Guard</span>
-                    </div>
+function renderGuilds(guilds) {
+  const box = $("guilds");
+  box.textContent = "";
+  for (const g of guilds) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const name = document.createElement("div");
+    name.className = "gname";
+    name.textContent = g.name;
+    card.appendChild(name);
+    const rows = [["成員", g.members], ["語音房觸發", g.room], ["陷阱頻道", g.trap], ["通告頻道", g.punish], ["開票頻道", g.ticket]];
+    for (const [label, value] of rows) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const a = document.createElement("span");
+      a.textContent = label;
+      const b = document.createElement("span");
+      b.textContent = value === null || value === undefined ? "未設定" : typeof value === "string" ? "#" + value : value;
+      row.append(a, b);
+      card.appendChild(row);
+    }
+    const sw = document.createElement("label");
+    sw.className = "switch";
+    const box2 = document.createElement("input");
+    box2.type = "checkbox";
+    box2.checked = g.autoban;
+    box2.onchange = async () => {
+      try {
+        await api(`/api/guilds/${g.id}/autoban`, { enabled: box2.checked });
+        toast(`自動封鎖已${box2.checked ? "開啟" : "關閉"}`);
+      } catch (e) {
+        box2.checked = !box2.checked;
+        toast(e.message);
+      }
+    };
+    sw.append(box2, document.createTextNode("陷阱頻道自動封鎖"));
+    card.appendChild(sw);
+    box.appendChild(card);
+  }
+}
 
-                    <div class="space-y-2" id="securityLogContainer">
-                        <div class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/60 flex items-center justify-between text-xs">
-                            <span class="text-rose-400 font-mono">[BAN] Spammer_99</span>
-                            <span class="text-slate-400">觸發陷阱頻道 #honeypot</span>
-                            <span class="text-slate-500 font-mono">10 mins ago</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+function renderGuildSelect(guilds) {
+  const key = guilds.map(g => g.id).join(",");
+  if (key === guildKey) return;
+  guildKey = key;
+  const sel = $("sendGuild");
+  sel.textContent = "";
+  for (const g of guilds) sel.add(new Option(g.name, g.id));
+  loadChannels();
+}
 
-        <section class="glass-card p-6 rounded-2xl space-y-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                        <i class="fa-solid fa-terminal text-sky-400"></i>
-                        斜槓指令列表 (Slash Commands)
-                    </h2>
-                    <p class="text-xs text-slate-400 mt-1">獨立 Cog 模組架構，全無註解高效編譯</p>
-                </div>
-                <div class="flex gap-2 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
-                    <button class="tab-btn active text-xs font-semibold px-3 py-1.5 rounded-lg border border-transparent transition-all" onclick="filterCommands('all', this)">全部</button>
-                    <button class="tab-btn text-xs font-semibold px-3 py-1.5 rounded-lg border border-transparent text-slate-400 transition-all" onclick="filterCommands('music', this)">音樂與語音</button>
-                    <button class="tab-btn text-xs font-semibold px-3 py-1.5 rounded-lg border border-transparent text-slate-400 transition-all" onclick="filterCommands('admin', this)">管理與安全</button>
-                </div>
-            </div>
+async function loadChannels() {
+  const sel = $("sendChannel");
+  sel.textContent = "";
+  const id = $("sendGuild").value;
+  if (!id) return;
+  try {
+    const data = await api(`/api/guilds/${id}/channels`);
+    for (const c of data.channels) sel.add(new Option("#" + c.name, c.id));
+  } catch (e) {
+    toast(e.message);
+  }
+}
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="commandsGrid">
-                <div class="cmd-card music p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-start justify-between hover:border-slate-700 transition-colors">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 bg-sky-500/20 text-sky-300 rounded-md font-mono text-xs font-bold">/music</span>
-                            <span class="text-xs text-slate-400 font-mono">action: join | leave | play</span>
-                        </div>
-                        <p class="text-sm text-slate-200 pt-1">語音頻道連線控制與 Bilibili / SoundCloud 音樂串流播放</p>
-                    </div>
-                    <span class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">cogs/music.py</span>
-                </div>
+async function refresh() {
+  try {
+    const s = await api("/api/status");
+    $("botName").textContent = s.bot;
+    $("cLat").textContent = s.latency === null ? "-" : s.latency + " ms";
+    $("cUp").textContent = fmtUptime(s.uptime);
+    $("cMem").textContent = s.memory + " MB";
+    $("cGuilds").textContent = s.guilds.length;
+    renderGuilds(s.guilds);
+    renderGuildSelect(s.guilds);
+  } catch (e) {
+    if (!$("app").classList.contains("hidden")) toast(e.message);
+  }
+}
 
-                <div class="cmd-card music p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-start justify-between hover:border-slate-700 transition-colors">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 bg-sky-500/20 text-sky-300 rounded-md font-mono text-xs font-bold">/stop</span>
-                        </div>
-                        <p class="text-sm text-slate-200 pt-1">立即停止音訊播放、清空佇列並重置語音狀態</p>
-                    </div>
-                    <span class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">cogs/music.py</span>
-                </div>
+$("loginBtn").onclick = async () => {
+  $("loginErr").textContent = "";
+  try {
+    await api("/api/login", { password: $("pw").value });
+    $("pw").value = "";
+    showApp();
+  } catch (e) {
+    $("loginErr").textContent = e.message;
+  }
+};
+$("pw").onkeydown = e => { if (e.key === "Enter") $("loginBtn").click(); };
 
-                <div class="cmd-card music p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-start justify-between hover:border-slate-700 transition-colors">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 bg-sky-500/20 text-sky-300 rounded-md font-mono text-xs font-bold">/tts</span>
-                            <span class="text-xs text-slate-400 font-mono">text: string</span>
-                        </div>
-                        <p class="text-sm text-slate-200 pt-1">Edge-TTS 多國高音質文字轉語音語音頻道朗讀</p>
-                    </div>
-                    <span class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">cogs/music.py</span>
-                </div>
+$("logoutBtn").onclick = async () => {
+  await api("/api/logout", {}).catch(() => {});
+  showLogin();
+};
 
-                <div class="cmd-card admin p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-start justify-between hover:border-slate-700 transition-colors">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 rounded-md font-mono text-xs font-bold">/whois</span>
-                            <span class="text-xs text-slate-400 font-mono">user: member</span>
-                        </div>
-                        <p class="text-sm text-slate-200 pt-1">查詢指定成員詳細身分資料、進房時間與白名單權限</p>
-                    </div>
-                    <span class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">cogs/tools.py</span>
-                </div>
+$("sendGuild").onchange = loadChannels;
 
-                <div class="cmd-card admin p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-start justify-between hover:border-slate-700 transition-colors">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 bg-rose-500/20 text-rose-300 rounded-md font-mono text-xs font-bold">/punish</span>
-                            <span class="text-xs text-slate-400 font-mono">action: ban | kick | mute</span>
-                        </div>
-                        <p class="text-sm text-slate-200 pt-1">伺服器懲處控制台（僅限擁有者與授權臨時操作人員）</p>
-                    </div>
-                    <span class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">cogs/admin.py</span>
-                </div>
+$("sendBtn").onclick = async () => {
+  const text = $("sendText").value.trim();
+  const channel = $("sendChannel").value;
+  if (!text || !channel) return toast("請選擇頻道並輸入訊息");
+  $("sendBtn").disabled = true;
+  try {
+    await api("/api/send", { channel_id: channel, content: text });
+    $("sendText").value = "";
+    toast("已發送");
+  } catch (e) {
+    toast(e.message);
+  }
+  $("sendBtn").disabled = false;
+};
 
-                <div class="cmd-card admin p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-start justify-between hover:border-slate-700 transition-colors">
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 bg-rose-500/20 text-rose-300 rounded-md font-mono text-xs font-bold">/set</span>
-                            <span class="text-xs text-slate-400 font-mono">type: trap | punish_channel</span>
-                        </div>
-                        <p class="text-sm text-slate-200 pt-1">設定獨立伺服器之陷阱防護頻道與公告日誌頻道</p>
-                    </div>
-                    <span class="text-xs font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded">cogs/admin.py</span>
-                </div>
-            </div>
-        </section>
+$("restartBtn").onclick = async () => {
+  if (!confirm("確定要重新啟動機器人嗎？期間所有指令都無法使用。")) return;
+  try {
+    await api("/api/restart", {});
+    toast("正在重新啟動，約需 30 到 90 秒...");
+    clearInterval(timer);
+    setTimeout(() => {
+      timer = setInterval(async () => {
+        try {
+          await api("/api/status");
+          toast("機器人已恢復上線");
+          showApp();
+        } catch (e) {}
+      }, 5000);
+    }, 10000);
+  } catch (e) {
+    toast(e.message);
+  }
+};
 
-    </main>
-
-    <footer class="relative z-10 w-full border-t border-slate-800/80 bg-slate-900/50 py-6 text-center text-xs text-slate-500">
-        <p>© 2026 Server.cat Bot Dashboard. Powered by Discord.py & Render Deployment.</p>
-    </footer>
-
-    <script>
-        const glow = document.getElementById('mouseGlow');
-
-        let mouseX = window.innerWidth / 2;
-        let mouseY = window.innerHeight / 2;
-        let currentX = window.innerWidth / 2;
-        let currentY = window.innerHeight / 2;
-
-        window.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-
-        function animateGlow() {
-            currentX += (mouseX - currentX) * 0.1;
-            currentY += (mouseY - currentY) * 0.1;
-
-            glow.style.left = `${currentX}px`;
-            glow.style.top = `${currentY}px`;
-
-            requestAnimationFrame(animateGlow);
-        }
-
-        animateGlow();
-
-        const serverData = {
-            guild1: {
-                name: "Main Community Guild",
-                id: "89347102948172901",
-                ping: "24 ms",
-                voiceStatus: "播放中",
-                voiceDetail: "Bilibili HQ Stream",
-                users: "1,420",
-                security: "Active",
-                trackTitle: "YOASOBI - IDOL (Bilibili HQ)",
-                trackChannel: "音樂大廳 #1 • 點播者: @DevUser",
-                progress: "65%",
-                badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-                badgeText: "PLAYING",
-                logs: [
-                    { user: "Spammer_99", action: "觸發陷阱頻道 #honeypot", time: "10 mins ago" },
-                    { user: "RaidBot_X", action: "自動 Ban 防護處置", time: "1 hour ago" }
-                ]
-            },
-            guild2: {
-                name: "Gaming Tavern",
-                id: "71239840192847102",
-                ping: "18 ms",
-                voiceStatus: "TTS 朗讀中",
-                voiceDetail: "Edge-TTS (zh-TW)",
-                users: "580",
-                security: "Active",
-                trackTitle: "[TTS] 管理員廣播：今晚 8 點舉辦隊伍聯賽",
-                trackChannel: "遊戲討論區 #2 • 點播者: @Admin",
-                progress: "30%",
-                badgeClass: "bg-sky-500/20 text-sky-400 border-sky-500/30",
-                badgeText: "TTS READING",
-                logs: [
-                    { user: "Unknown_User", action: "嘗試無權限執行 /punish", time: "25 mins ago" }
-                ]
-            },
-            guild3: {
-                name: "Dev Testing Grounds",
-                id: "40192837461524310",
-                ping: "12 ms",
-                voiceStatus: "閒置中",
-                voiceDetail: "未連線至頻道",
-                users: "12",
-                security: "Standby",
-                trackTitle: "目前無音樂播放",
-                trackChannel: "無連線頻道",
-                progress: "0%",
-                badgeClass: "bg-slate-500/20 text-slate-400 border-slate-500/30",
-                badgeText: "IDLE",
-                logs: [
-                    { user: "System", action: "斜槓指令同步完成", time: " Just now" }
-                ]
-            }
-        };
-
-        const serverSelect = document.getElementById('serverSelect');
-        serverSelect.addEventListener('change', (e) => {
-            const data = serverData[e.target.value];
-            if (!data) return;
-
-            document.getElementById('currentGuildTitle').textContent = data.name;
-            document.getElementById('currentGuildId').textContent = data.id;
-            document.getElementById('statPing').textContent = data.ping;
-            document.getElementById('statVoice').textContent = data.voiceStatus;
-            document.getElementById('statVoiceDetail').textContent = data.voiceDetail;
-            document.getElementById('statUsers').textContent = data.users;
-            document.getElementById('statSecurity').textContent = data.security;
-
-            document.getElementById('currentTrackTitle').textContent = data.trackTitle;
-            document.getElementById('currentTrackChannel').innerHTML = `<i class="fa-solid fa-volume-high text-sky-400"></i> ${data.trackChannel}`;
-            document.getElementById('trackProgress').style.width = data.progress;
-
-            const badge = document.getElementById('musicBadge');
-            badge.className = `px-2.5 py-0.5 text-xs font-semibold rounded-full border ${data.badgeClass}`;
-            badge.textContent = data.badgeText;
-
-            const logContainer = document.getElementById('securityLogContainer');
-            logContainer.innerHTML = data.logs.map(log => `
-                <div class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/60 flex items-center justify-between text-xs">
-                    <span class="text-rose-400 font-mono">[LOG] ${log.user}</span>
-                    <span class="text-slate-400">${log.action}</span>
-                    <span class="text-slate-500 font-mono">${log.time}</span>
-                </div>
-            `).join('');
-        });
-
-        function filterCommands(category, btn) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-
-            const cards = document.querySelectorAll('.cmd-card');
-            cards.forEach(card => {
-                if (category === 'all' || card.classList.contains(category)) {
-                    card.style.display = 'flex';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        }
-    </script>
+(async () => {
+  try {
+    const s = await api("/api/session");
+    if (!s.configured) return showLogin(false);
+    s.authed ? showApp() : showLogin();
+  } catch (e) {
+    showLogin();
+  }
+})();
+</script>
 </body>
 </html>
