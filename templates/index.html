@@ -31,6 +31,10 @@ button.danger{background:var(--bad)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .switch{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px}
 .switch input{width:auto}
+.field{display:grid;gap:4px;font-size:14px;color:var(--mute)}
+.roles{max-height:180px;overflow:auto;display:grid;gap:6px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:14px}
+.roles label{display:flex;align-items:center;gap:8px}.roles input{width:auto}
+#logs{margin:0;background:#0a0c10;border:1px solid var(--line);border-radius:8px;padding:12px;height:260px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000;border:1px solid var(--line);padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 .err{color:var(--bad);font-size:14px;min-height:20px;margin-top:8px}
@@ -66,6 +70,12 @@ button.danger{background:var(--bad)}
   <h2>伺服器</h2>
   <div id="guilds" class="grid"></div>
 
+  <h2>伺服器設定</h2>
+  <div class="card form">
+    <select id="setGuild"></select>
+    <div id="settingsBox" class="form"></div>
+  </div>
+
   <h2>以機器人身分發送訊息</h2>
   <div class="card form">
     <div class="two">
@@ -75,6 +85,9 @@ button.danger{background:var(--bad)}
     <textarea id="sendText" maxlength="2000" placeholder="輸入要發送的訊息（不會觸發 @ 提及）"></textarea>
     <div><button id="sendBtn">發送</button></div>
   </div>
+
+  <h2>機器人日誌</h2>
+  <pre id="logs"></pre>
 </div>
 
 <div id="toast"></div>
@@ -166,6 +179,20 @@ function renderGuilds(guilds) {
     };
     sw.append(box2, document.createTextNode("陷阱頻道自動封鎖"));
     card.appendChild(sw);
+    if (g.voice) {
+      const vrow = document.createElement("div");
+      vrow.className = "row";
+      const vtext = document.createElement("span");
+      vtext.textContent = "語音：" + g.voice + (g.playing ? " ♪ " + g.playing : "");
+      const vbtn = document.createElement("button");
+      vbtn.className = "ghost";
+      vbtn.textContent = "停止並離開";
+      vbtn.onclick = async () => {
+        try { await api(`/api/guilds/${g.id}/voice/leave`, {}); toast("已離開語音頻道"); refresh(); } catch (e) { toast(e.message); }
+      };
+      vrow.append(vtext, vbtn);
+      card.appendChild(vrow);
+    }
     box.appendChild(card);
   }
 }
@@ -174,10 +201,92 @@ function renderGuildSelect(guilds) {
   const key = guilds.map(g => g.id).join(",");
   if (key === guildKey) return;
   guildKey = key;
-  const sel = $("sendGuild");
-  sel.textContent = "";
-  for (const g of guilds) sel.add(new Option(g.name, g.id));
+  for (const id of ["sendGuild", "setGuild"]) {
+    const sel = $(id);
+    sel.textContent = "";
+    for (const g of guilds) sel.add(new Option(g.name, g.id));
+  }
   loadChannels();
+  loadSettings();
+}
+
+const SETTINGS = [
+  ["room", "語音房觸發頻道", "voice"],
+  ["trap", "陷阱頻道", "text"],
+  ["punish", "通告頻道", "text"],
+  ["ticket_panel", "開票訊息頻道", "text"],
+  ["ticket_pending", "待處理分類", "categories"],
+  ["ticket_resolved", "已處理分類", "categories"],
+];
+
+async function loadSettings() {
+  const id = $("setGuild").value;
+  const box = $("settingsBox");
+  box.textContent = "";
+  if (!id) return;
+  let data;
+  try {
+    data = await api(`/api/guilds/${id}/settings`);
+  } catch (e) {
+    return toast(e.message);
+  }
+  for (const [key, label, kind] of SETTINGS) {
+    const wrap = document.createElement("label");
+    wrap.className = "field";
+    const title = document.createElement("span");
+    title.textContent = label;
+    const sel = document.createElement("select");
+    sel.add(new Option("未設定", ""));
+    for (const c of data[kind]) sel.add(new Option(c.name, c.id));
+    sel.value = data.config[key] || "";
+    sel.onchange = async () => {
+      try {
+        const r = await api(`/api/guilds/${id}/settings`, { key, value: sel.value || null });
+        toast(r.warning || "已儲存");
+        refresh();
+      } catch (e) {
+        toast(e.message);
+        loadSettings();
+      }
+    };
+    wrap.append(title, sel);
+    box.appendChild(wrap);
+  }
+  const staffWrap = document.createElement("div");
+  staffWrap.className = "field";
+  const staffTitle = document.createElement("span");
+  staffTitle.textContent = "票務管理身分組";
+  const list = document.createElement("div");
+  list.className = "roles";
+  for (const role of data.roles) {
+    const row = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = data.staff.includes(role.id);
+    cb.onchange = async () => {
+      try {
+        await api(`/api/guilds/${id}/staff`, { role_id: role.id, enabled: cb.checked });
+        toast("已儲存");
+      } catch (e) {
+        cb.checked = !cb.checked;
+        toast(e.message);
+      }
+    };
+    row.append(cb, document.createTextNode(role.name));
+    list.appendChild(row);
+  }
+  staffWrap.append(staffTitle, list);
+  box.appendChild(staffWrap);
+}
+
+async function loadLogs() {
+  try {
+    const data = await api("/api/logs");
+    const pre = $("logs");
+    const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+    pre.textContent = data.lines.join("\n");
+    if (stick) pre.scrollTop = pre.scrollHeight;
+  } catch (e) {}
 }
 
 async function loadChannels() {
@@ -203,6 +312,7 @@ async function refresh() {
     $("cGuilds").textContent = s.guilds.length;
     renderGuilds(s.guilds);
     renderGuildSelect(s.guilds);
+    loadLogs();
   } catch (e) {
     if (!$("app").classList.contains("hidden")) toast(e.message);
   }
@@ -226,6 +336,7 @@ $("logoutBtn").onclick = async () => {
 };
 
 $("sendGuild").onchange = loadChannels;
+$("setGuild").onchange = loadSettings;
 
 $("sendBtn").onclick = async () => {
   const text = $("sendText").value.trim();
