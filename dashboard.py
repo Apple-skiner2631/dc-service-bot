@@ -1,8 +1,10 @@
 import asyncio
 import hashlib
 import hmac
+import logging
 import os
 import time
+from collections import deque
 from functools import wraps
 
 import discord
@@ -13,8 +15,32 @@ STARTED_AT = time.time()
 PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 failures = {}
 
+SETTING_TYPES = {
+    "room": discord.VoiceChannel,
+    "trap": discord.TextChannel,
+    "punish": discord.TextChannel,
+    "ticket_panel": discord.TextChannel,
+    "ticket_pending": discord.CategoryChannel,
+    "ticket_resolved": discord.CategoryChannel,
+}
+
+
+class LogBuffer(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.lines = deque(maxlen=200)
+        self.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+
+    def emit(self, record):
+        self.lines.append(self.format(record))
+
+
+LOG_BUFFER = LogBuffer()
+
 
 def register_dashboard(app, bot):
+    if LOG_BUFFER not in logging.getLogger().handlers:
+        logging.getLogger().addHandler(LOG_BUFFER)
     secret = f"dash:{PASSWORD}:{os.environ.get('TOKEN', '')}"
     app.secret_key = hashlib.sha256(secret.encode()).hexdigest()
     app.config.update(
@@ -84,8 +110,10 @@ def register_dashboard(app, bot):
         latency = bot.latency
         latency_ms = round(latency * 1000) if latency == latency and latency != float("inf") else None
         guilds = []
+        music = bot.get_cog("Music")
         for guild in bot.guilds:
             config = bot.config_db.get(guild.id, {})
+            session_view = music.sessions.get(guild.id) if music else None
             guilds.append({
                 "id": str(guild.id),
                 "name": guild.name,
@@ -95,6 +123,8 @@ def register_dashboard(app, bot):
                 "trap": channel_name(guild, config, "trap"),
                 "punish": channel_name(guild, config, "punish"),
                 "ticket": channel_name(guild, config, "ticket_panel"),
+                "voice": guild.voice_client.channel.name if guild.voice_client else None,
+                "playing": session_view.title if session_view else None,
             })
         return jsonify(
             bot=str(bot.user),
@@ -155,4 +185,96 @@ def register_dashboard(app, bot):
     @guarded
     def restart():
         asyncio.run_coroutine_threadsafe(do_restart(), bot.loop)
+        return jsonify(ok=True)
+
+    @app.get("/api/logs")
+    @guarded
+    def logs():
+        return jsonify(lines=list(LOG_BUFFER.lines))
+
+    @app.get("/api/guilds/<guild_id>/settings")
+    @guarded
+    def get_settings(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild:
+            return jsonify(error="找不到伺服器"), 404
+        config = bot.config_db.get(guild.id, {})
+
+        def items(seq):
+            return [{"id": str(c.id), "name": c.name} for c in seq]
+
+        return jsonify(
+            text=items(guild.text_channels),
+            voice=items(guild.voice_channels),
+            categories=items(guild.categories),
+            roles=items(r for r in reversed(guild.roles) if not r.is_default() and not r.managed),
+            config={key: (str(config[key]) if config.get(key) else None) for key in SETTING_TYPES},
+            staff=[str(r) for r in config.get("ticket_staff", [])],
+        )
+
+    @app.post("/api/guilds/<guild_id>/settings")
+    @guarded
+    def set_setting(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild:
+            return jsonify(error="找不到伺服器"), 404
+        data = request.get_json(silent=True) or {}
+        key = data.get("key")
+        expected = SETTING_TYPES.get(key)
+        if not expected:
+            return jsonify(error="未知的設定項目"), 400
+        config = bot.config_db.setdefault(guild.id, {})
+        value = data.get("value")
+        if value in (None, ""):
+            config.pop(key, None)
+            run_on_bot(bot.save_state())
+            return jsonify(ok=True)
+        channel = guild.get_channel(int(value)) if str(value).isdigit() else None
+        if not isinstance(channel, expected):
+            return jsonify(error="頻道類型不符"), 400
+        config[key] = channel.id
+        run_on_bot(bot.save_state())
+        if key == "ticket_panel":
+            cog = bot.get_cog("TicketCog")
+            if cog:
+                try:
+                    run_on_bot(cog.send_panel(channel, force=True))
+                except Exception as e:
+                    return jsonify(ok=True, warning=f"已儲存，但發送開票訊息失敗: {e}")
+        return jsonify(ok=True)
+
+    @app.post("/api/guilds/<guild_id>/staff")
+    @guarded
+    def set_staff(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild:
+            return jsonify(error="找不到伺服器"), 404
+        data = request.get_json(silent=True) or {}
+        raw_id = str(data.get("role_id", ""))
+        role = guild.get_role(int(raw_id)) if raw_id.isdigit() else None
+        if not role:
+            return jsonify(error="找不到身分組"), 404
+        staff = bot.config_db.setdefault(guild.id, {}).setdefault("ticket_staff", [])
+        if data.get("enabled"):
+            if role.id not in staff:
+                staff.append(role.id)
+        elif role.id in staff:
+            staff.remove(role.id)
+        run_on_bot(bot.save_state())
+        return jsonify(ok=True)
+
+    @app.post("/api/guilds/<guild_id>/voice/leave")
+    @guarded
+    def voice_leave(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild or not guild.voice_client:
+            return jsonify(error="機器人不在語音頻道中"), 404
+
+        async def leave():
+            music = bot.get_cog("Music")
+            if music:
+                await music._stop_playback(guild)
+            await guild.voice_client.disconnect()
+
+        run_on_bot(leave())
         return jsonify(ok=True)
