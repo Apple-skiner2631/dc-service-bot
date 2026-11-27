@@ -22,6 +22,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from dashboard import register_dashboard
+
 print(f"BOOT 3: flask 與 discord.py {discord.__version__} 匯入完成", flush=True)
 
 faulthandler.enable()
@@ -190,6 +192,7 @@ class ServiceBot(commands.Bot):
 
 
 bot = ServiceBot()
+register_dashboard(app, bot)
 print("BOOT 4: ServiceBot 建立完成", flush=True)
 
 
