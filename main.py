@@ -13,6 +13,7 @@ import logging
 import shutil
 from threading import Thread
 
+import aiohttp
 import psutil
 
 print("BOOT 2: 標準函式庫匯入完成", flush=True)
@@ -197,6 +198,33 @@ register_dashboard(app, bot)
 print("BOOT 4: ServiceBot 建立完成", flush=True)
 
 
+async def wait_until_not_blocked(token: str):
+    delay = 120
+    while True:
+        retry = None
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "https://discord.com/api/v10/users/@me",
+                    headers={"Authorization": f"Bot {token}"},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status != 429:
+                        return
+                    retry = resp.headers.get("Retry-After")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logging.warning(f"檢查 Discord 連線失敗: {e}")
+
+        try:
+            wait = int(float(retry)) if retry else 0
+        except ValueError:
+            wait = 0
+        wait = min(max(wait, delay), 3600)
+        logging.error(f"Discord 回應 429（這個 IP 被暫時封鎖），{wait} 秒後再試，期間不會重啟")
+        await asyncio.sleep(wait)
+        delay = min(delay * 2, 1800)
+
+
 async def main():
     print("BOOT 5: main() 開始", flush=True)
     token = os.environ.get("TOKEN")
@@ -205,6 +233,7 @@ async def main():
         return
 
     keep_alive()
+    await wait_until_not_blocked(token)
     async with bot:
         await bot.start(token)
 
