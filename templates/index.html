@@ -76,6 +76,9 @@ button.danger{background:var(--bad)}
     <div id="settingsBox" class="form"></div>
   </div>
 
+  <h2>歡迎訊息與身分組領取</h2>
+  <div id="welcomeBox" class="card form"></div>
+
   <h2>以機器人身分發送訊息</h2>
   <div class="card form">
     <div class="two">
@@ -277,6 +280,102 @@ async function loadSettings() {
   }
   staffWrap.append(staffTitle, list);
   box.appendChild(staffWrap);
+  loadWelcome(id);
+}
+
+function mk(tag, props = {}, ...kids) {
+  const el = Object.assign(document.createElement(tag), props);
+  el.append(...kids);
+  return el;
+}
+
+function field(label, input) {
+  return mk("label", { className: "field" }, mk("span", { textContent: label }), input);
+}
+
+function pick(items, value, empty) {
+  const s = mk("select");
+  if (empty) s.add(new Option(empty, ""));
+  for (const i of items) s.add(new Option(i.name, i.id));
+  s.value = value || "";
+  return s;
+}
+
+async function loadWelcome(id) {
+  const box = $("welcomeBox");
+  box.textContent = "";
+  let d;
+  try {
+    d = await api(`/api/guilds/${id}/welcome`);
+  } catch (e) {
+    return toast(e.message);
+  }
+  const w = d.welcome, r = d.selfrole;
+
+  const enabled = mk("input", { type: "checkbox", checked: w.enabled });
+  const channel = pick(d.text, d.channel, "未設定（不發送歡迎訊息）");
+  const title = mk("input", { value: w.title, maxLength: 256 });
+  const body = mk("textarea", { value: w.body, maxLength: 4000 });
+  const thumb = mk("input", { value: w.thumbnail, placeholder: "%avatar% 或圖片網址" });
+  const image = mk("input", { value: w.image, placeholder: "大圖網址（選填）" });
+  const memberRole = pick(d.roles, w.member_role, "不自動給身分組");
+  const botRole = pick(d.roles, w.bot_role, "不自動給身分組");
+  const saveBtn = mk("button", { textContent: "儲存歡迎設定" });
+  saveBtn.onclick = async () => {
+    try {
+      await api(`/api/guilds/${id}/welcome`, {
+        enabled: enabled.checked, channel: channel.value, title: title.value, body: body.value,
+        thumbnail: thumb.value, image: image.value, member_role: memberRole.value, bot_role: botRole.value,
+      });
+      toast("歡迎設定已儲存");
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+  box.append(
+    mk("label", { className: "switch" }, enabled, document.createTextNode("啟用歡迎訊息")),
+    field("歡迎訊息頻道", channel),
+    field("標題", title),
+    field("內文（支援 Markdown）", body),
+    mk("div", { className: "field", textContent: "變數：%user% 提及、%username% 名稱、%guild% 伺服器、%count% 人數、%avatar% 頭像網址" }),
+    field("縮圖", thumb),
+    field("大圖", image),
+    mk("div", { className: "two" }, field("新成員身分組", memberRole), field("機器人身分組", botRole)),
+    mk("div", {}, saveBtn),
+  );
+
+  box.append(mk("hr", { style: "border:0;border-top:1px solid var(--line);width:100%" }));
+  const srChannel = pick(d.text, r.channel, "請選擇頻道");
+  const srType = pick([{ id: "button", name: "按鈕" }, { id: "select", name: "下拉選單" }], r.type);
+  const srTitle = mk("input", { value: r.title, maxLength: 256 });
+  const srContent = mk("textarea", { value: r.content, maxLength: 4000 });
+  const list = mk("div", { className: "roles" });
+  const boxes = [];
+  for (const role of d.roles) {
+    const cb = mk("input", { type: "checkbox", value: role.id, checked: r.roles.includes(role.id) });
+    boxes.push(cb);
+    list.append(mk("label", {}, cb, document.createTextNode(role.name)));
+  }
+  const sendBtn = mk("button", { textContent: "發送／更新領取訊息" });
+  sendBtn.onclick = async () => {
+    try {
+      await api(`/api/guilds/${id}/selfrole`, {
+        channel: srChannel.value, type: srType.value, title: srTitle.value, content: srContent.value,
+        roles: boxes.filter(b => b.checked).map(b => b.value),
+      });
+      toast("領取訊息已發送");
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+  box.append(
+    mk("div", { className: "gname", textContent: "身分組領取訊息（最多 15 個身分組）" }),
+    mk("div", { className: "two" }, field("發送頻道", srChannel), field("訊息類型", srType)),
+    field("標題", srTitle),
+    field("內文（支援 Markdown）", srContent),
+    field("身分組清單", list),
+    mk("div", {}, sendBtn),
+  );
 }
 
 async function loadLogs() {
