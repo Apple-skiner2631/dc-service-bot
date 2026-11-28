@@ -11,6 +11,8 @@ import discord
 import psutil
 from flask import jsonify, request, session
 
+from cogs.welcome import DEFAULT_WELCOME, MAX_ROLES, publish_selfrole
+
 STARTED_AT = time.time()
 PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 failures = {}
@@ -277,4 +279,100 @@ def register_dashboard(app, bot):
             await guild.voice_client.disconnect()
 
         run_on_bot(leave())
+        return jsonify(ok=True)
+
+    @app.get("/api/guilds/<guild_id>/welcome")
+    @guarded
+    def get_welcome_settings(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild:
+            return jsonify(error="找不到伺服器"), 404
+        welcome = dict(DEFAULT_WELCOME)
+        welcome.update(bot.welcome_db.get(guild.id, {}))
+        for key in ("member_role", "bot_role"):
+            welcome[key] = str(welcome[key]) if welcome.get(key) else None
+        channel = bot.config_db.get(guild.id, {}).get("welcome")
+        saved = bot.roles_db.get(guild.id, {})
+        selfrole = {
+            "channel": str(saved["channel"]) if saved.get("channel") else None,
+            "type": saved.get("type", "button"),
+            "title": saved.get("title", "身分組領取"),
+            "content": saved.get("content", "點選下方的按鈕來領取身分組"),
+            "roles": [str(r["id"]) for r in saved.get("roles", [])],
+        }
+        return jsonify(
+            welcome=welcome,
+            channel=str(channel) if channel else None,
+            selfrole=selfrole,
+            text=[{"id": str(c.id), "name": c.name} for c in guild.text_channels],
+            roles=[{"id": str(r.id), "name": r.name} for r in reversed(guild.roles) if not r.is_default() and not r.managed],
+        )
+
+    @app.post("/api/guilds/<guild_id>/welcome")
+    @guarded
+    def save_welcome(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild:
+            return jsonify(error="找不到伺服器"), 404
+        data = request.get_json(silent=True) or {}
+
+        def role_value(key):
+            raw = str(data.get(key) or "")
+            role = guild.get_role(int(raw)) if raw.isdigit() else None
+            return role.id if role else None
+
+        bot.welcome_db[guild.id] = {
+            "enabled": bool(data.get("enabled")),
+            "title": str(data.get("title", ""))[:256],
+            "body": str(data.get("body", ""))[:4000],
+            "thumbnail": str(data.get("thumbnail", ""))[:500],
+            "image": str(data.get("image", ""))[:500],
+            "member_role": role_value("member_role"),
+            "bot_role": role_value("bot_role"),
+        }
+        config = bot.config_db.setdefault(guild.id, {})
+        raw_channel = str(data.get("channel") or "")
+        if raw_channel:
+            channel = guild.get_channel(int(raw_channel)) if raw_channel.isdigit() else None
+            if not isinstance(channel, discord.TextChannel):
+                return jsonify(error="歡迎頻道必須是文字頻道"), 400
+            config["welcome"] = channel.id
+        else:
+            config.pop("welcome", None)
+        run_on_bot(bot.save_state())
+        return jsonify(ok=True)
+
+    @app.post("/api/guilds/<guild_id>/selfrole")
+    @guarded
+    def save_selfrole(guild_id):
+        guild = bot.get_guild(int(guild_id)) if guild_id.isdigit() else None
+        if not guild:
+            return jsonify(error="找不到伺服器"), 404
+        data = request.get_json(silent=True) or {}
+        raw_channel = str(data.get("channel") or "")
+        channel = guild.get_channel(int(raw_channel)) if raw_channel.isdigit() else None
+        if not isinstance(channel, discord.TextChannel):
+            return jsonify(error="請選擇發送頻道"), 400
+        roles = []
+        for raw in list(data.get("roles", []))[:MAX_ROLES]:
+            role = guild.get_role(int(raw)) if str(raw).isdigit() else None
+            if role and not role.is_default() and not role.managed:
+                roles.append({"id": role.id, "label": role.name[:80]})
+        if not roles:
+            return jsonify(error="請至少選擇一個身分組"), 400
+        old = bot.roles_db.get(guild.id, {})
+        config = {
+            "channel": channel.id,
+            "type": "select" if data.get("type") == "select" else "button",
+            "title": str(data.get("title", ""))[:256],
+            "content": str(data.get("content", ""))[:4000],
+            "roles": roles,
+            "message_id": old.get("message_id") if old.get("channel") == channel.id else None,
+        }
+        try:
+            run_on_bot(publish_selfrole(bot, guild, config))
+        except Exception as e:
+            return jsonify(error=f"發送失敗: {e}"), 500
+        bot.roles_db[guild.id] = config
+        run_on_bot(bot.save_state())
         return jsonify(ok=True)
