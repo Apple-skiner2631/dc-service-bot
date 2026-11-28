@@ -74,16 +74,17 @@ class Admin(commands.Cog):
     @app_commands.choices(type=[
         app_commands.Choice(name="punish", value="punish"),
         app_commands.Choice(name="trap", value="trap"),
-        app_commands.Choice(name="room", value="room")
+        app_commands.Choice(name="room", value="room"),
+        app_commands.Choice(name="welcome", value="welcome")
     ])
-    @app_commands.describe(type="設定類型", channel="punish/trap 請選文字頻道，room 請選語音頻道")
+    @app_commands.describe(type="設定類型", channel="punish/trap/welcome 請選文字頻道，room 請選語音頻道")
     async def set_channel(self, interaction: discord.Interaction, type: str, channel: Union[discord.TextChannel, discord.VoiceChannel]):
         if not self.is_allowed(interaction):
             return await interaction.response.send_message("❌ 權限不足。", ephemeral=True)
 
         if type == "room" and not isinstance(channel, discord.VoiceChannel):
             return await interaction.response.send_message("❌ room 必須選擇「語音頻道」。", ephemeral=True)
-        if type in ("punish", "trap") and not isinstance(channel, discord.TextChannel):
+        if type in ("punish", "trap", "welcome") and not isinstance(channel, discord.TextChannel):
             return await interaction.response.send_message(f"❌ {type} 必須選擇「文字頻道」。", ephemeral=True)
 
         self.bot.config_db.setdefault(interaction.guild_id, {})[type] = channel.id
