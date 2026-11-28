@@ -53,6 +53,7 @@ EXTENSIONS = [
     "cogs.security",
     "cogs.ticket",
     "cogs.voice",
+    "cogs.welcome",
 ]
 
 ALLOWED_IDS = [1008278721007992863, 1359813653544566815]
@@ -66,7 +67,7 @@ def read_channel_id(name: str) -> int:
 
 
 STORE_CHANNEL_ID = read_channel_id("STORE_CHANNEL_ID")
-STATE_KEYS = ("config_db", "whitelist_db", "op_access_db", "autoban_db")
+STATE_KEYS = ("config_db", "whitelist_db", "op_access_db", "autoban_db", "welcome_db", "roles_db")
 STATE_FILENAME = "bot_state.json"
 
 
